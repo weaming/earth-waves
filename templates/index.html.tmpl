@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Earth Waves 地球波动：录音样本</title>
+    <title>Earth Waves 地球波动</title>
+    <link rel="icon" href="icon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@1/css/pico.min.css">
     <style>
         :root {
@@ -16,11 +17,16 @@
         }
         .container { max-width: 1200px; margin: 0 auto; }
         
+        /* 导航栏 Logo */
+        nav ul { display: flex; align-items: center; gap: 0.75rem; margin: 0; }
+        nav li { list-style-type: none; }
+
         /* 表格样式 */
         figure { margin: 0; overflow-x: auto; }
         th, td { padding: 8px 12px; vertical-align: middle; white-space: nowrap; }
         tr.is-playing { background-color: var(--pico-secondary-background); }
-        .table-action-button {
+        .action-cell { text-align: center; }
+        .action-cell a, .action-cell button {
             display: inline-flex;
             justify-content: center; align-items: center;
             padding: 4px; margin: 0;
@@ -28,9 +34,9 @@
             transition: opacity 0.2s ease;
             background: none; border: none; cursor: pointer;
         }
-        .table-action-button:hover { opacity: 1; color: var(--pico-primary); }
-        .table-action-button svg { width: 1.5em; height: 1.5em; }
-
+        .action-cell a:hover, .action-cell button:hover { opacity: 1; color: var(--pico-primary); }
+        .action-cell svg { width: 1.5em; height: 1.5em; }
+        
         /* 播放/暂停图标切换 (CSS 方式) */
         .play-button .icon-pause, .play-button.is-playing .icon-play { display: none; }
         .play-button.is-playing .icon-pause, .play-button .icon-play { display: block; }
@@ -70,7 +76,14 @@
 </head>
 <body>
     <div class="container">
-        <nav><ul><li><strong>Earth Waves 地球波动：录音样本</strong></li></ul></nav>
+        <nav>
+            <ul>
+                <li>
+                    <img src="icon.svg" alt="Logo" style="width: 32px; height: 32px; display: block;">
+                </li>
+                <li><strong>Earth Waves 地球波动：录音样本</strong></li>
+            </ul>
+        </nav>
         <main>
             <figure>
                 <table>
@@ -101,7 +114,7 @@
                             <td class="action-cell">
                                 <button class="play-button table-action-button" data-index="{{ $index }}" title="播放/暂停">
                                     <svg class="icon-play" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"></path></svg>
-                                    <svg class="icon-pause" viewBox="0 0 24 24" fill="currentColor" style="display: none;"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"></path></svg>
+                                    <svg class="icon-pause" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"></path></svg>
                                 </button>
                             </td>
                         </tr>
@@ -136,8 +149,8 @@
                     <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6 8.5 6V6z"></path></svg>
                 </button>
                 <button id="play-pause-button" class="secondary outline main-play-pause" aria-label="播放/暂停" disabled>
-                    <svg class="icon-play" viewBox="0 0 24 24" fill="currentColor" style="display: block;"><path d="M8 5v14l11-7z"></path></svg>
-                    <svg class="icon-pause" viewBox="0 0 24 24" fill="currentColor" style="display: none;"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"></path></svg>
+                    <svg class="icon-play" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"></path></svg>
+                    <svg class="icon-pause" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"></path></svg>
                 </button>
                 <button id="next-button" class="secondary outline" aria-label="下一曲" disabled>
                     <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"></path></svg>
@@ -148,6 +161,7 @@
     </div>
 
     <script>
+        // DOM Elements
         const audioPlayer = document.getElementById('main-audio-player');
         const playPauseBtn = document.getElementById('play-pause-button');
         const prevBtn = document.getElementById('prev-button');
@@ -160,15 +174,17 @@
         const totalDurationEl = document.getElementById('total-duration');
         const modeBtn = document.getElementById('mode-button');
 
+        // Playback State
         let currentTrackIndex = -1;
         const modes = ['list-play', 'list-loop', 'single-loop'];
-        let currentModeIndex = 0; // Default: list-play
+        let currentModeIndex = 0;
         const tracks = [
             {{ range . }}
             { src: "{{ .CompressedAudioPath }}", title: "{{ .Title }}", duration: {{ .DurationSeconds }} },
             {{ end }}
         ];
 
+        // Helper Functions
         function formatTime(seconds) {
             if (isNaN(seconds) || seconds < 0) return "00:00";
             const min = Math.floor(seconds / 60);
@@ -179,19 +195,20 @@
         function updatePlayerUI(playingIndex, isPlaying) {
             allRows.forEach((row, index) => {
                 row.classList.toggle('is-playing', index === playingIndex);
+                const rowBtn = row.querySelector('.play-button');
+                if (rowBtn) {
+                    const isThisTrackPlaying = (index === playingIndex && isPlaying);
+                    rowBtn.querySelector('.icon-play').style.display = isThisTrackPlaying ? 'none' : 'block';
+                    rowBtn.querySelector('.icon-pause').style.display = isThisTrackPlaying ? 'block' : 'none';
+                }
             });
-            playButtons.forEach((btn, index) => {
-                const isThisTrackPlaying = (index === playingIndex && isPlaying);
-                btn.querySelector('.icon-play').style.display = isThisTrackPlaying ? 'none' : 'block';
-                btn.querySelector('.icon-pause').style.display = isThisTrackPlaying ? 'block' : 'none';
-            });
-
             const mainPlayIcon = playPauseBtn.querySelector('.icon-play');
             const mainPauseIcon = playPauseBtn.querySelector('.icon-pause');
-            if(mainPlayIcon) mainPlayIcon.style.display = isPlaying ? 'none' : 'block';
-            if(mainPauseIcon) mainPauseIcon.style.display = isPlaying ? 'block' : 'none';
+            if (mainPlayIcon) mainPlayIcon.style.display = isPlaying ? 'none' : 'block';
+            if (mainPauseIcon) mainPauseIcon.style.display = isPlaying ? 'block' : 'none';
         }
         
+        // Core Player Logic
         function playTrack(index) {
             const isEndOfList = index >= tracks.length;
             const isStartOfList = index < 0;
@@ -223,6 +240,7 @@
             audioPlayer.play();
         }
 
+        // Event Listeners
         playButtons.forEach((button) => {
             button.addEventListener('click', (e) => {
                 e.preventDefault();
@@ -290,22 +308,18 @@
             
             if (currentMode === 'list-play') {
                 modeBtn.querySelector('.icon-list-play').style.display = 'block';
-                modeBtn.title = "列表播放";
             } else if (currentMode === 'list-loop') {
                 modeBtn.querySelector('.icon-list-loop').style.display = 'block';
-                modeBtn.title = "列表循环";
             } else { // single-loop
                 modeBtn.querySelector('.icon-single-loop').style.display = 'block';
-                modeBtn.title = "单曲循环";
             }
         });
 
         // Initial setup on page load
         if (tracks.length > 0) {
             playPauseBtn.disabled = false;
-            updatePlayerUI(-1, false); // Show initial paused state (play icon visible)
+            updatePlayerUI(-1, false);
         } else {
-            // No tracks, disable main play button
             playPauseBtn.disabled = true;
             prevBtn.disabled = true;
             nextBtn.disabled = true;

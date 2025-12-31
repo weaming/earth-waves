@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -37,7 +38,7 @@ type AudioMetadata struct {
 		BitDepth     int  `json:"bit_depth"`
 		Channels     int  `json:"channels"`
 		IsCompressed bool `json:"is_compressed"`
-	} `json:"tech_info"` // 恢复 TechInfo 字段
+	} `json:"tech_info"`
 }
 
 var (
@@ -45,17 +46,18 @@ var (
 	jsonDir        string
 	distDir        = "dist"
 	assetsAudioDir = "dist/assets/audio"
-	staticDir      = "static" // 重新定义 staticDir
+	staticDir      = "static"
 	timeRegex      = regexp.MustCompile(`(\d{8}_\d{6}|\d{6}_\d{6})`)
 )
 
 func main() {
 	// --- 命令行参数处理 ---
 	wavPathFlag := flag.String("wav", "", "Path to the directory containing WAV files (required)")
+	genFlag := flag.Bool("gen", false, "Generate static site directly without starting the server")
 	flag.Parse()
 
 	if *wavPathFlag == "" {
-		fmt.Println("WAV directory path is required.")
+		fmt.Println("WAV directory path is required. Use the -wav flag.")
 		flag.Usage()
 		os.Exit(1)
 	}
@@ -63,19 +65,14 @@ func main() {
 	wavDir = *wavPathFlag
 	info, err := os.Stat(wavDir)
 	if err != nil || !info.IsDir() {
-		log.Fatalf("Invalid WAV directory path: %s", wavDir)
+		log.Fatalf("Invalid WAV directory path provided: %s", wavDir)
 	}
 
-	// json 目录放在 wav 目录的同级
 	jsonDir = filepath.Join(filepath.Dir(wavDir), "json")
 
 	fmt.Printf("Source WAV directory: %s\n", wavDir)
 	fmt.Printf("Metadata JSON directory: %s\n", jsonDir)
 
-	// --- 程序启动 ---
-	if err := os.MkdirAll(wavDir, 0755); err != nil {
-		log.Fatalf("Failed to create %s directory: %v", wavDir, err)
-	}
 	if err := os.MkdirAll(jsonDir, 0755); err != nil {
 		log.Fatalf("Failed to create %s directory: %v", jsonDir, err)
 	}
@@ -86,21 +83,33 @@ func main() {
 	}
 	fmt.Println("Audio data initialization complete.")
 
+	// --- 根据 -gen 参数决定执行流程 ---
+	if *genFlag {
+		// 直接生成并退出
+		fmt.Println("Generation-only mode activated.")
+		if err := runGenerationLogic(); err != nil {
+			log.Fatalf("Failed to generate static site: %v", err)
+		}
+		fmt.Println("Static site generated successfully in 'dist' directory.")
+	} else {
+		// 启动 web 服务器
+		startWebServer()
+	}
+}
+
+func startWebServer() {
 	http.HandleFunc("/", adminHandler)
 	http.HandleFunc("/edit", editHandler)
 	http.HandleFunc("/save", saveHandler)
 	http.HandleFunc("/edit-folder", editFolderHandler)
 	http.HandleFunc("/save-folder", saveFolderHandler)
 	http.HandleFunc("/generate", generateStaticSiteHandler)
-
-	http.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir(staticDir))))
 	http.Handle("/site/", http.StripPrefix("/site/", http.FileServer(http.Dir(distDir))))
-
 	fmt.Println("Admin server starting on http://localhost:8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))
 }
 
-// parseTimeFromFilename 从文件名中解析时间
+// ... (辅助函数) ...
 func parseTimeFromFilename(filename string) (time.Time, bool) {
 	match := timeRegex.FindString(filename)
 	if match == "" {
@@ -269,7 +278,7 @@ func transcodeToAac(inputPath, outputPath string) error {
 	if err := os.MkdirAll(filepath.Dir(outputPath), 0755); err != nil {
 		return fmt.Errorf("failed to create output directory %s: %w", filepath.Dir(outputPath), err)
 	}
-	_, stderr, err := runCommand("ffmpeg", "-i", inputPath, "-y", "-vn", "-c:a", "aac_at", "-vbr", "4", "-movflags", "+faststart", outputPath)
+	_, stderr, err := runCommand("ffmpeg", "-i", inputPath, "-y", "-vn", "-c:a", "aac", "-vbr", "4", outputPath)
 	if err != nil {
 		return fmt.Errorf("ffmpeg transcode failed: %v, stderr: %s", err, stderr)
 	}
@@ -505,30 +514,29 @@ func copyFile(src, dst string) error {
 
 func add(a, b int) int { return a + b }
 
-func generateStaticSiteHandler(w http.ResponseWriter, r *http.Request) {
+// runGenerationLogic 包含了生成静态网站的核心逻辑
+func runGenerationLogic() error {
 	log.Println("Generating static site...")
 	if err := os.RemoveAll(distDir); err != nil {
-		log.Printf("Error cleaning dist directory: %v", err)
-		http.Error(w, "Failed to clean dist directory", 500)
-		return
+		return fmt.Errorf("failed to clean dist directory: %w", err)
 	}
 	if err := os.MkdirAll(assetsAudioDir, 0755); err != nil {
-		log.Printf("Failed to create %s directory: %v", assetsAudioDir, err)
-		http.Error(w, "Failed to create assets audio directory", 500)
-		return
+		return fmt.Errorf("failed to create assets audio directory: %w", err)
 	}
 
 	groupedMetadata, err := loadAllMetadataGroupedByFolder()
 	if err != nil {
-		log.Printf("Error loading all metadata for static site generation: %v", err)
-		http.Error(w, "Failed to load audio metadata", 500)
-		return
+		return fmt.Errorf("failed to load audio metadata: %w", err)
 	}
 
 	var flatMetadata []AudioMetadata
 	for _, files := range groupedMetadata {
 		flatMetadata = append(flatMetadata, files...)
 	}
+
+	sort.Slice(flatMetadata, func(i, j int) bool {
+		return flatMetadata[i].RecordDate.After(flatMetadata[j].RecordDate)
+	})
 
 	for i := range flatMetadata {
 		meta := &flatMetadata[i]
@@ -546,41 +554,57 @@ func generateStaticSiteHandler(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+
 	tmpl, err := template.New("index.html.tmpl").Funcs(template.FuncMap{"Base": filepath.Base, "formatDuration": formatDuration, "add": add}).ParseFS(templateFS, "templates/index.html.tmpl")
 	if err != nil {
-		log.Printf("Error parsing template index.html.tmpl for static site: %v", err)
-		http.Error(w, "Internal Server Error", 500)
-		return
+		return fmt.Errorf("failed to parse template index.html.tmpl: %w", err)
 	}
+
 	indexPath := filepath.Join(distDir, "index.html")
 	f, err := os.Create(indexPath)
 	if err != nil {
-		log.Printf("Error creating index.html: %v", err)
-		http.Error(w, "Failed to create index.html", 500)
-		return
+		return fmt.Errorf("failed to create index.html: %w", err)
 	}
 	defer f.Close()
+
 	if err := tmpl.Execute(f, flatMetadata); err != nil {
-		log.Printf("Error executing template for index.html: %v", err)
-		http.Error(w, "Failed to generate index.html", 500)
-		return
+		return fmt.Errorf("failed to execute template for index.html: %w", err)
 	}
 	log.Printf("Generated %s", indexPath)
+
+	if err := copyFile("icon.svg", filepath.Join(distDir, "icon.svg")); err != nil {
+		log.Printf("Warning: could not copy icon.svg: %v", err)
+	}
+
 	if err := filepath.Walk(staticDir, func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err
 		}
 		relPath, _ := filepath.Rel(staticDir, path)
+		if relPath == "." {
+			return nil
+		}
 		destPath := filepath.Join(distDir, relPath)
 		if info.IsDir() {
 			return os.MkdirAll(destPath, info.Mode())
 		}
 		return copyFile(path, destPath)
 	}); err != nil {
-		log.Printf("Error copying static assets: %v", err)
+		log.Printf("Warning: error copying static assets: %v", err)
 	}
+
+	return nil
+}
+
+func generateStaticSiteHandler(w http.ResponseWriter, r *http.Request) {
+	if err := runGenerationLogic(); err != nil {
+		log.Printf("Error during static site generation: %v", err)
+		http.Error(w, "Failed to generate static site", 500)
+		return
+	}
+
 	log.Println("Static site generation complete.")
-	tmpl, err = template.ParseFS(templateFS, "templates/generate_success.html")
+	tmpl, err := template.ParseFS(templateFS, "templates/generate_success.html")
 	if err != nil {
 		log.Printf("Error parsing success template: %v", err)
 		http.Error(w, "Internal Server Error", 500)
