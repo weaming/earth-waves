@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Earth Waves 地球波动：录音样本</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@1/css/pico.min.css">
+    <style>
+        :root {
+            --player-height: 90px;
+            --pico-primary-focus: var(--pico-primary-hover);
+            --pico-font-size: 14px;
+        }
+        body {
+            padding-bottom: var(--player-height);
+        }
+        .container { max-width: 1200px; margin: 0 auto; }
+        
+        /* 表格样式 */
+        figure { margin: 0; overflow-x: auto; }
+        th, td { padding: 8px 12px; vertical-align: middle; white-space: nowrap; }
+        tr.is-playing { background-color: var(--pico-secondary-background); }
+        .table-action-button {
+            display: inline-flex;
+            justify-content: center; align-items: center;
+            padding: 4px; margin: 0;
+            opacity: 0.7; color: var(--pico-h_color);
+            transition: opacity 0.2s ease;
+            background: none; border: none; cursor: pointer;
+        }
+        .table-action-button:hover { opacity: 1; color: var(--pico-primary); }
+        .table-action-button svg { width: 1.5em; height: 1.5em; }
+
+        /* 播放/暂停图标切换 (CSS 方式) */
+        .play-button .icon-pause, .play-button.is-playing .icon-play { display: none; }
+        .play-button.is-playing .icon-pause, .play-button .icon-play { display: block; }
+        #play-pause-button .icon-pause, #play-pause-button.is-playing .icon-play { display: none; }
+        #play-pause-button.is-playing .icon-pause, #play-pause-button .icon-play { display: block; }
+
+        /* 底部播放器样式 */
+        .audio-player-container {
+            position: fixed; bottom: 0; left: 0;
+            width: 100%; height: var(--player-height);
+            background-color: var(--pico-card-background-color);
+            border-top: 1px solid var(--pico-form-element-border-color);
+            box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.1);
+            z-index: 1000; padding: 0 20px;
+        }
+        .audio-player-container .container {
+            display: flex; align-items: center; justify-content: space-between;
+            height: 100%; gap: 2rem;
+        }
+        .player-timeline { flex-grow: 1; display: flex; flex-direction: column; justify-content: center; min-width: 0;}
+        .track-info { font-size: 0.9em; margin-bottom: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .progress-bar-container { display: flex; align-items: center; gap: 10px; font-size: 0.8em; color: var(--pico-muted-color); }
+        input[type="range"] { flex-grow: 1; height: 5px; margin: 0; }
+
+        .player-controls { display: flex; align-items: center; gap: 0.5rem; }
+        .player-controls button {
+            width: 44px; height: 44px; border-radius: 50%; padding: 0;
+            display: flex; justify-content: center; align-items: center;
+            background-color: transparent; border: 2px solid transparent;
+        }
+        .player-controls button:hover { border-color: var(--pico-secondary-hover); }
+        .player-controls button.main-play-pause { border-color: var(--pico-contrast-border-color); }
+        .player-controls button.main-play-pause:hover { border-color: var(--pico-primary-hover); }
+        .player-controls svg { width: 1.5em; height: 1.5em; }
+        #main-audio-player { display: none; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <nav><ul><li><strong>Earth Waves 地球波动：录音样本</strong></li></ul></nav>
+        <main>
+            <figure>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th>标题</th>
+                            <th>时长</th>
+                            <th>录音位置</th>
+                            <th>录音时间</th>
+                            <th>下载</th>
+                            <th>播放</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {{ range $index, $element := . }}
+                        <tr data-track-index="{{ $index }}">
+                            <td>{{ add $index 1 }}</td>
+                            <td>{{ $element.Title }}</td>
+                            <td>{{ formatDuration $element.DurationSeconds }}</td>
+                            <td>{{ $element.Location }}</td>
+                            <td>{{ $element.RecordDate.Format "2006-01-02 15:04" }}</td>
+                            <td class="action-cell">
+                                <a href="{{ $element.CompressedAudioPath }}" class="table-action-button" download title="下载 AAC ({{ printf "%.2fMB" $element.CompressedFileSizeMB }})">
+                                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"></path></svg>
+                                </a>
+                            </td>
+                            <td class="action-cell">
+                                <button class="play-button table-action-button" data-index="{{ $index }}" title="播放/暂停">
+                                    <svg class="icon-play" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"></path></svg>
+                                    <svg class="icon-pause" viewBox="0 0 24 24" fill="currentColor" style="display: none;"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"></path></svg>
+                                </button>
+                            </td>
+                        </tr>
+                        {{ else }}
+                        <tr>
+                            <td colspan="10" style="text-align: center;">暂无录音样本可展示。</td>
+                        </tr>
+                        {{ end }}
+                    </tbody>
+                </table>
+            </figure>
+        </main>
+    </div>
+
+    <div class="audio-player-container">
+        <div class="container">
+            <div class="player-timeline">
+                <div id="current-track-title" class="track-info">请选择一首曲目</div>
+                <div class="progress-bar-container">
+                    <span id="current-time">00:00</span>
+                    <input type="range" id="progress-bar" value="0" min="0" max="100" step="0.1">
+                    <span id="total-duration">00:00</span>
+                </div>
+            </div>
+            <div class="player-controls">
+                <button id="mode-button" class="secondary outline" aria-label="播放模式">
+                    <svg class="icon-list-play" title="列表播放" viewBox="0 0 24 24" fill="currentColor"><path d="M4 10h12v2H4zm0-4h12v2H4zm0 8h8v2H4zm10 0v6l5-3z"></path></svg>
+                    <svg class="icon-list-loop" title="列表循环" viewBox="0 0 24 24" fill="currentColor" style="display: none;"><path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"></path></svg>
+                    <svg class="icon-single-loop" title="单曲循环" viewBox="0 0 24 24" fill="currentColor" style="display: none;"><path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z M11.5 8h1v8h-1z"></path></svg>
+                </button>
+                <button id="prev-button" class="secondary outline" aria-label="上一曲" disabled>
+                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6 8.5 6V6z"></path></svg>
+                </button>
+                <button id="play-pause-button" class="secondary outline main-play-pause" aria-label="播放/暂停" disabled>
+                    <svg class="icon-play" viewBox="0 0 24 24" fill="currentColor" style="display: block;"><path d="M8 5v14l11-7z"></path></svg>
+                    <svg class="icon-pause" viewBox="0 0 24 24" fill="currentColor" style="display: none;"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"></path></svg>
+                </button>
+                <button id="next-button" class="secondary outline" aria-label="下一曲" disabled>
+                    <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"></path></svg>
+                </button>
+            </div>
+            <audio id="main-audio-player" preload="auto"></audio>
+        </div>
+    </div>
+
+    <script>
+        const audioPlayer = document.getElementById('main-audio-player');
+        const playPauseBtn = document.getElementById('play-pause-button');
+        const prevBtn = document.getElementById('prev-button');
+        const nextBtn = document.getElementById('next-button');
+        const trackTitle = document.getElementById('current-track-title');
+        const playButtons = document.querySelectorAll('.play-button');
+        const allRows = document.querySelectorAll('tbody tr');
+        const progressBar = document.getElementById('progress-bar');
+        const currentTimeEl = document.getElementById('current-time');
+        const totalDurationEl = document.getElementById('total-duration');
+        const modeBtn = document.getElementById('mode-button');
+
+        let currentTrackIndex = -1;
+        const modes = ['list-play', 'list-loop', 'single-loop'];
+        let currentModeIndex = 0; // Default: list-play
+        const tracks = [
+            {{ range . }}
+            { src: "{{ .CompressedAudioPath }}", title: "{{ .Title }}", duration: {{ .DurationSeconds }} },
+            {{ end }}
+        ];
+
+        function formatTime(seconds) {
+            if (isNaN(seconds) || seconds < 0) return "00:00";
+            const min = Math.floor(seconds / 60);
+            const sec = Math.floor(seconds % 60);
+            return `${min.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
+        }
+        
+        function updatePlayerUI(playingIndex, isPlaying) {
+            allRows.forEach((row, index) => {
+                row.classList.toggle('is-playing', index === playingIndex);
+            });
+            playButtons.forEach((btn, index) => {
+                const isThisTrackPlaying = (index === playingIndex && isPlaying);
+                btn.querySelector('.icon-play').style.display = isThisTrackPlaying ? 'none' : 'block';
+                btn.querySelector('.icon-pause').style.display = isThisTrackPlaying ? 'block' : 'none';
+            });
+
+            const mainPlayIcon = playPauseBtn.querySelector('.icon-play');
+            const mainPauseIcon = playPauseBtn.querySelector('.icon-pause');
+            if(mainPlayIcon) mainPlayIcon.style.display = isPlaying ? 'none' : 'block';
+            if(mainPauseIcon) mainPauseIcon.style.display = isPlaying ? 'block' : 'none';
+        }
+        
+        function playTrack(index) {
+            const isEndOfList = index >= tracks.length;
+            const isStartOfList = index < 0;
+
+            if (isEndOfList) {
+                if (modes[currentModeIndex] === 'list-loop') {
+                    index = 0;
+                } else {
+                    audioPlayer.pause();
+                    currentTrackIndex = -1;
+                    trackTitle.textContent = "播放列表已结束";
+                    updatePlayerUI(-1, false);
+                    return;
+                }
+            }
+            if (isStartOfList) {
+                if(modes[currentModeIndex] === 'list-loop') {
+                    index = tracks.length - 1;
+                } else {
+                    return;
+                }
+            }
+
+            currentTrackIndex = index;
+            const track = tracks[currentTrackIndex];
+            audioPlayer.src = track.src;
+            trackTitle.textContent = track.title;
+            totalDurationEl.textContent = formatTime(track.duration);
+            audioPlayer.play();
+        }
+
+        playButtons.forEach((button) => {
+            button.addEventListener('click', (e) => {
+                e.preventDefault();
+                const index = parseInt(button.dataset.index, 10);
+                if (currentTrackIndex === index && !audioPlayer.paused) {
+                    audioPlayer.pause();
+                } else {
+                    playTrack(index);
+                }
+            });
+        });
+
+        playPauseBtn.addEventListener('click', () => {
+            if (currentTrackIndex === -1 && tracks.length > 0) {
+                 playTrack(0);
+                 return;
+            }
+            if (audioPlayer.paused) audioPlayer.play();
+            else audioPlayer.pause();
+        });
+        
+        prevBtn.addEventListener('click', () => playTrack(currentTrackIndex - 1));
+        nextBtn.addEventListener('click', () => playTrack(currentTrackIndex + 1));
+
+        audioPlayer.addEventListener('play', () => {
+            playPauseBtn.disabled = false;
+            const isLooping = modes[currentModeIndex] === 'list-loop';
+            prevBtn.disabled = (currentTrackIndex === 0 && !isLooping);
+            nextBtn.disabled = (currentTrackIndex >= tracks.length - 1 && !isLooping);
+            updatePlayerUI(currentTrackIndex, true);
+        });
+
+        audioPlayer.addEventListener('pause', () => {
+            updatePlayerUI(currentTrackIndex, false);
+        });
+
+        audioPlayer.addEventListener('ended', () => {
+            const currentMode = modes[currentModeIndex];
+            if (currentMode === 'single-loop') {
+                playTrack(currentTrackIndex);
+            } else {
+                playTrack(currentTrackIndex + 1);
+            }
+        });
+        
+        audioPlayer.addEventListener('timeupdate', () => {
+            if (!isNaN(audioPlayer.duration) && audioPlayer.duration > 0) {
+                progressBar.value = (audioPlayer.currentTime / audioPlayer.duration) * 100 || 0;
+                currentTimeEl.textContent = formatTime(audioPlayer.currentTime);
+            }
+        });
+
+        progressBar.addEventListener('input', () => {
+            if (!isNaN(audioPlayer.duration) && audioPlayer.duration > 0) {
+                audioPlayer.currentTime = (progressBar.value / 100) * audioPlayer.duration;
+            }
+        });
+
+        modeBtn.addEventListener('click', () => {
+            currentModeIndex = (currentModeIndex + 1) % modes.length;
+            const currentMode = modes[currentModeIndex];
+            
+            const icons = modeBtn.querySelectorAll('svg');
+            icons.forEach(icon => icon.style.display = 'none');
+            
+            if (currentMode === 'list-play') {
+                modeBtn.querySelector('.icon-list-play').style.display = 'block';
+                modeBtn.title = "列表播放";
+            } else if (currentMode === 'list-loop') {
+                modeBtn.querySelector('.icon-list-loop').style.display = 'block';
+                modeBtn.title = "列表循环";
+            } else { // single-loop
+                modeBtn.querySelector('.icon-single-loop').style.display = 'block';
+                modeBtn.title = "单曲循环";
+            }
+        });
+
+        // Initial setup on page load
+        if (tracks.length > 0) {
+            playPauseBtn.disabled = false;
+            updatePlayerUI(-1, false); // Show initial paused state (play icon visible)
+        } else {
+            // No tracks, disable main play button
+            playPauseBtn.disabled = true;
+            prevBtn.disabled = true;
+            nextBtn.disabled = true;
+            modeBtn.disabled = true;
+        }
+
+        // Global spacebar for play/pause
+        document.addEventListener('keydown', (event) => {
+            if (event.code === 'Space' || event.key === ' ') {
+                const targetTagName = event.target.tagName.toLowerCase();
+                if (targetTagName === 'input' || targetTagName === 'textarea') {
+                    return;
+                }
+                event.preventDefault();
+                playPauseBtn.click();
+            }
+        });
+    </script>
+</body>
+</html>

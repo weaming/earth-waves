@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>录音管理后台</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@1/css/pico.min.css">
+    <style>
+        body { padding: 20px; }
+        .container { max-width: 1200px; margin: 0 auto; }
+        table { width: 100%; margin-top: 10px; }
+        th, td { text-align: left; padding: 8px; white-space: nowrap; }
+        summary { font-weight: bold; cursor: pointer; display: flex; align-items: center; } /* 移除 justify-content */
+        details { border: 1px solid #e0e0e0; border-radius: 5px; padding: 10px; margin-bottom: 10px; overflow-x: auto; } /* 添加横向滚动 */
+        details[open] { padding-bottom: 15px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <nav>
+            <ul>
+                <li><strong>录音管理</strong></li>
+            </ul>
+            <ul>
+                <li><a href="/generate" role="button">生成静态网站</a></li>
+            </ul>
+        </nav>
+
+        <h1>录音列表</h1>
+        
+        {{ range $folder, $files := . }}
+        <details>
+            <summary>
+                <span>📁 {{ if eq $folder "/" }}根目录{{ else }}{{ $folder }}{{ end }} ({{ len $files }} 个文件)</span>
+                <a href="/edit-folder?path={{ $folder }}" role="button" class="secondary outline" style="margin-left: auto;">编辑位置</a>
+            </summary>
+            <table>
+                <thead>
+                    <tr>
+                        <th>标题</th>
+                        <th>文件名</th>
+                        <th>时长</th>
+                        <th>大小</th>
+                        <th>录音位置</th>
+                        <th>录音时间</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{ range $files }}
+                    <tr>
+                        <td>{{ .Title }}</td>
+                        <td>{{ Base .SourceFilename }}</td>
+                                            <td>{{ formatDuration .DurationSeconds }}</td>
+                                            <td>{{ printf "%.2f MB" .SourceFileSizeMB }}</td>
+                                            <td>{{ .Location }}</td>                        <td>{{ .RecordDate.Format "2006-01-02 15:04" }}</td>
+                        <td><a href="/edit?filename={{ .SourceFilename }}">编辑</a></td>
+                    </tr>
+                    {{ end }}
+                </tbody>
+            </table>
+        </details>
+        {{ else }}
+        <p>暂无录音文件，请将 .wav 文件放入 `data/wav` 目录中。</p>
+        {{ end }}
+    </div>
+</body>
+</html>

@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>编辑文件夹位置</title>
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/@picocss/pico@1/css/pico.min.css"
+    />
+    <style>
+      body {
+        padding: 20px;
+      }
+      .container {
+        max-width: 960px;
+        margin: 0 auto;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <nav>
+        <ul>
+          <li><strong>录音管理</strong></li>
+        </ul>
+        <ul>
+          <li><a href="/" role="button" class="secondary">返回列表</a></li>
+        </ul>
+      </nav>
+
+      <h1>编辑文件夹位置: {{ .Path }}</h1>
+
+      <form action="/save-folder" method="POST">
+        <input type="hidden" name="path" value="{{ .Path }}" />
+
+        <label for="location">统一录音位置</label>
+        <input
+          type="text"
+          id="location"
+          name="location"
+          value="{{ .CurrentLocation }}"
+          required
+        />
+        <small
+          >此操作将覆盖文件夹 '{{ .Path }}' 下所有录音文件的“录音位置”。</small
+        >
+
+        <button type="submit">保存更改</button>
+      </form>
+    </div>
+  </body>
+</html>
