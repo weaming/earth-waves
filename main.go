@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"html/template"
 	"io"
-	"io/ioutil"
 	"log"
 	"net/http"
 	"os"
@@ -190,7 +189,7 @@ func initAudioData() error {
 			if okFromFilename {
 				recordDateToUse = recordDateFromFilename
 			}
-			jsonContent, err := ioutil.ReadFile(jsonFilePath)
+			jsonContent, err := os.ReadFile(jsonFilePath)
 			if err != nil {
 				if os.IsNotExist(err) {
 					newFile = true
@@ -245,7 +244,7 @@ func initAudioData() error {
 			if err != nil {
 				return fmt.Errorf("failed to marshal json for %s: %w", info.Name(), err)
 			}
-			if err := ioutil.WriteFile(jsonFilePath, updatedJsonContent, 0644); err != nil {
+			if err := os.WriteFile(jsonFilePath, updatedJsonContent, 0644); err != nil {
 				return fmt.Errorf("failed to write json file %s: %w", jsonFilePath, err)
 			}
 		}
@@ -392,7 +391,7 @@ func loadAllMetadataGroupedByFolder() (map[string][]AudioMetadata, error) {
 
 func loadAudioMetadata(path string) (AudioMetadata, error) {
 	var metadata AudioMetadata
-	jsonContent, err := ioutil.ReadFile(path)
+	jsonContent, err := os.ReadFile(path)
 	if err != nil {
 		return metadata, fmt.Errorf("failed to read json file %s: %w", path, err)
 	}
@@ -411,7 +410,7 @@ func getMetadataBySourceFilename(filename string) (AudioMetadata, error) {
 func loadSettings() (Settings, error) {
 	var settings Settings
 	jsonPath := filepath.Join(jsonDir, "settings.json")
-	jsonContent, err := ioutil.ReadFile(jsonPath)
+	jsonContent, err := os.ReadFile(jsonPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return Settings{Domain: "https://your-domain.com"}, nil
@@ -427,7 +426,7 @@ func loadSettings() (Settings, error) {
 func loadAboutContent() (AboutContent, error) {
 	var content AboutContent
 	jsonPath := filepath.Join(jsonDir, "about.json")
-	jsonContent, err := ioutil.ReadFile(jsonPath)
+	jsonContent, err := os.ReadFile(jsonPath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			// 如果文件不存在，返回一个带默认值的新结构体
@@ -488,7 +487,7 @@ func editAboutHandler(w http.ResponseWriter, r *http.Request) {
 
 func saveAboutHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "Only POST requests are allowed", 405)
+		http.Error(w, "Only POST requests are allowed", http.StatusMethodNotAllowed)
 		return
 	}
 	content := AboutContent{
@@ -502,7 +501,7 @@ func saveAboutHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to save content", 500)
 		return
 	}
-	if err := ioutil.WriteFile(jsonPath, updatedJsonContent, 0644); err != nil {
+	if err := os.WriteFile(jsonPath, updatedJsonContent, 0644); err != nil {
 		log.Printf("Failed to write about.json file: %v", err)
 		http.Error(w, "Failed to save content", 500)
 	}
@@ -554,7 +553,7 @@ func editHandler(w http.ResponseWriter, r *http.Request) {
 
 func saveHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "Only POST requests are allowed", 405)
+		http.Error(w, "Only POST requests are allowed", http.StatusMethodNotAllowed)
 		return
 	}
 	sourceFilename := r.FormValue("source_filename")
@@ -586,7 +585,7 @@ func saveHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Failed to save metadata", 500)
 		return
 	}
-	if err := ioutil.WriteFile(jsonFilePath, updatedJsonContent, 0644); err != nil {
+	if err := os.WriteFile(jsonFilePath, updatedJsonContent, 0644); err != nil {
 		log.Printf("Failed to write json file %s: %v", jsonFilePath, err)
 		http.Error(w, "Failed to save metadata", 500)
 	}
@@ -626,7 +625,7 @@ func editFolderHandler(w http.ResponseWriter, r *http.Request) {
 
 func saveFolderHandler(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "Only POST requests are allowed", 405)
+		http.Error(w, "Only POST requests are allowed", http.StatusMethodNotAllowed)
 		return
 	}
 	folderPath := r.FormValue("path")
@@ -655,7 +654,7 @@ func saveFolderHandler(w http.ResponseWriter, r *http.Request) {
 					log.Printf("Failed to marshal json for %s: %v", metadata.SourceFilename, err)
 					return nil
 				}
-				if err := ioutil.WriteFile(path, updatedJson, 0644); err != nil {
+				if err := os.WriteFile(path, updatedJson, 0644); err != nil {
 					log.Printf("Failed to write updated json for %s: %v", metadata.SourceFilename, err)
 				}
 			}
@@ -780,14 +779,14 @@ func runGenerationLogic() error {
 		// At this point, currentSourcePath points to a valid M4A in the cache
 		// Now copy it to dist/assets/audio and update metadata
 		relPath := m4aCacheFileRelPath // The relative path within assets/audio
-		
+
 		// Use the copyM4aToDist helper
 		compressedAudioPath, err := copyM4aToDist(currentSourcePath, relPath)
 		if err != nil {
 			log.Printf("Error copying M4A cache %s to dist: %v. Skipping this audio.", currentSourcePath, err)
 			continue
 		}
-		
+
 		meta.CompressedAudioPath = compressedAudioPath // Relative path for HTML
 		if aacFileInfo, err := os.Stat(currentSourcePath); err == nil {
 			meta.CompressedFileSizeMB = float64(aacFileInfo.Size()) / (1024 * 1024)
@@ -795,13 +794,12 @@ func runGenerationLogic() error {
 			log.Printf("Warning: Could not get file info for cached M4A %s: %v", currentSourcePath, err)
 			meta.CompressedFileSizeMB = 0
 		}
-		
+
 		processedMetadata = append(processedMetadata, *meta)
 	}
 
 	// Replace flatMetadata with processedMetadata
 	flatMetadata = processedMetadata
-
 
 	tmpl, err := template.New("index.html.tmpl").Funcs(template.FuncMap{"Base": filepath.Base, "formatDuration": formatDuration, "add": add}).ParseFS(templateFS, "templates/index.html.tmpl")
 	if err != nil {
