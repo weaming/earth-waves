@@ -808,13 +808,13 @@ func runGenerationLogic() error {
   <url>
     <loc>%s/</loc>
     <lastmod>%s</lastmod>
-    <changefreq>weekly</changefreq>
+    <changefreq>daily</changefreq>
     <priority>1.0</priority>
   </url>
   <url>
     <loc>%s/about.html</loc>
     <lastmod>%s</lastmod>
-    <changefreq>monthly</changefreq>
+    <changefreq>weekly</changefreq>
     <priority>0.8</priority>
   </url>
 </urlset>`, settings.Domain, time.Now().Format("2006-01-02"), settings.Domain, time.Now().Format("2006-01-02"))
