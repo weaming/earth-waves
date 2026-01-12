@@ -64,6 +64,7 @@ type AudioMetadata struct {
 var (
 	wavDir         string
 	jsonDir        string
+	m4aDir         string
 	distDir        = "dist"
 	assetsAudioDir = "dist/assets/audio"
 	staticDir      = "static"
@@ -89,12 +90,17 @@ func main() {
 	}
 
 	jsonDir = filepath.Join(filepath.Dir(wavDir), "json")
+	m4aDir = filepath.Join(filepath.Dir(wavDir), "m4a")
 
 	fmt.Printf("Source WAV directory: %s\n", wavDir)
 	fmt.Printf("Metadata JSON directory: %s\n", jsonDir)
+	fmt.Printf("M4A Cache directory: %s\n", m4aDir)
 
 	if err := os.MkdirAll(jsonDir, 0755); err != nil {
 		log.Fatalf("Failed to create %s directory: %v", jsonDir, err)
+	}
+	if err := os.MkdirAll(m4aDir, 0755); err != nil {
+		log.Fatalf("Failed to create %s directory: %v", m4aDir, err)
 	}
 
 	fmt.Println("Initializing audio data...")
@@ -263,13 +269,23 @@ func initAudioData() error {
 				return err
 			}
 			wavRelPath := strings.TrimSuffix(jsonRelPath, ".json") + ".wav"
-			if _, found := wavFilesFound[wavRelPath]; !found {
+			hasWav := false
+			if _, found := wavFilesFound[wavRelPath]; found {
+				hasWav = true
+			} else {
 				wavRelPathUpper := strings.TrimSuffix(jsonRelPath, ".json") + ".WAV"
-				if _, foundUpper := wavFilesFound[wavRelPathUpper]; !foundUpper {
-					log.Printf("Orphan json file found, deleting: %s", path)
-					if err := os.Remove(path); err != nil {
-						log.Printf("Failed to delete orphan json %s: %v", path, err)
-					}
+				if _, foundUpper := wavFilesFound[wavRelPathUpper]; foundUpper {
+					hasWav = true
+				}
+			}
+
+			hasM4aCache := m4aCacheExists(jsonRelPath)
+
+			// If neither WAV nor M4A cache exists, then it's a true orphan
+			if !hasWav && !hasM4aCache {
+				log.Printf("Orphan json file found, deleting: %s", path)
+				if err := os.Remove(path); err != nil {
+					log.Printf("Failed to delete orphan json %s: %v", path, err)
 				}
 			}
 		}
@@ -311,6 +327,13 @@ func getAudioTechInfo(audioPath string) (duration float64, sampleRate, bitDepth,
 	return duration, 0, 0, 0, fmt.Errorf("no valid audio stream found in %s", audioPath)
 }
 
+func m4aCacheExists(jsonRelPath string) bool {
+	m4aCacheRelPath := strings.TrimSuffix(jsonRelPath, ".json") + ".m4a"
+	m4aCachePath := filepath.Join(m4aDir, m4aCacheRelPath)
+	_, err := os.Stat(m4aCachePath)
+	return err == nil
+}
+
 func transcodeToAac(inputPath, outputPath string) error {
 	if err := os.MkdirAll(filepath.Dir(outputPath), 0755); err != nil {
 		return fmt.Errorf("failed to create output directory %s: %w", filepath.Dir(outputPath), err)
@@ -319,8 +342,20 @@ func transcodeToAac(inputPath, outputPath string) error {
 	if err != nil {
 		return fmt.Errorf("ffmpeg transcode failed: %v, stderr: %s", err, stderr)
 	}
-	log.Printf("Successfully transcoded %s to %s", inputPath, outputPath)
 	return nil
+}
+
+// copyM4aToDist 负责将 data/m4a 中的缓存文件复制到 dist/assets/audio
+func copyM4aToDist(srcM4aPath, relPath string) (string, error) {
+	dstAacRelPath := filepath.Join("assets", "audio", relPath)
+	dstAacPath := filepath.Join(distDir, dstAacRelPath)
+	if err := os.MkdirAll(filepath.Dir(dstAacPath), 0755); err != nil {
+		return "", fmt.Errorf("failed to create output directory %s: %w", filepath.Dir(dstAacPath), err)
+	}
+	if err := copyFile(srcM4aPath, dstAacPath); err != nil {
+		return "", fmt.Errorf("failed to copy %s to %s: %w", srcM4aPath, dstAacPath, err)
+	}
+	return filepath.ToSlash(dstAacRelPath), nil
 }
 
 func loadAllMetadataGroupedByFolder() (map[string][]AudioMetadata, error) {
@@ -335,16 +370,12 @@ func loadAllMetadataGroupedByFolder() (map[string][]AudioMetadata, error) {
 				return nil
 			}
 
-			jsonContent, err := ioutil.ReadFile(path)
+			metadata, err := loadAudioMetadata(path)
 			if err != nil {
-				log.Printf("Warning: Failed to read json file %s: %v", path, err)
+				log.Printf("Warning: %v", err)
 				return nil
 			}
-			var metadata AudioMetadata
-			if err := json.Unmarshal(jsonContent, &metadata); err != nil {
-				log.Printf("Warning: Failed to unmarshal json for %s: %v", path, err)
-				return nil
-			}
+
 			dir := filepath.Dir(metadata.SourceFilename)
 			if dir == "." {
 				dir = "/"
@@ -359,18 +390,22 @@ func loadAllMetadataGroupedByFolder() (map[string][]AudioMetadata, error) {
 	return groupedMetadata, nil
 }
 
+func loadAudioMetadata(path string) (AudioMetadata, error) {
+	var metadata AudioMetadata
+	jsonContent, err := ioutil.ReadFile(path)
+	if err != nil {
+		return metadata, fmt.Errorf("failed to read json file %s: %w", path, err)
+	}
+	if err := json.Unmarshal(jsonContent, &metadata); err != nil {
+		return metadata, fmt.Errorf("failed to unmarshal json for %s: %w", path, err)
+	}
+	return metadata, nil
+}
+
 func getMetadataBySourceFilename(filename string) (AudioMetadata, error) {
 	jsonFileRelPath := strings.TrimSuffix(filename, filepath.Ext(filename)) + ".json"
 	jsonFilePath := filepath.Join(jsonDir, jsonFileRelPath)
-	jsonContent, err := ioutil.ReadFile(jsonFilePath)
-	if err != nil {
-		return AudioMetadata{}, fmt.Errorf("failed to read json file %s: %w", jsonFilePath, err)
-	}
-	var metadata AudioMetadata
-	if err := json.Unmarshal(jsonContent, &metadata); err != nil {
-		return AudioMetadata{}, fmt.Errorf("failed to unmarshal json for %s: %w", filename, err)
-	}
-	return metadata, nil
+	return loadAudioMetadata(jsonFilePath)
 }
 
 func loadSettings() (Settings, error) {
@@ -608,13 +643,10 @@ func saveFolderHandler(w http.ResponseWriter, r *http.Request) {
 			if isSpecialJsonFile(info.Name()) {
 				return nil
 			}
-			jsonContent, err := ioutil.ReadFile(path)
+			metadata, err := loadAudioMetadata(path)
 			if err != nil {
-				return nil
-			}
-			var metadata AudioMetadata
-			if err := json.Unmarshal(jsonContent, &metadata); err != nil {
-				return nil
+				log.Printf("Warning: could not load metadata for %s during folder save: %v", path, err)
+				return nil // Continue to next file
 			}
 			if filepath.Dir(metadata.SourceFilename) == folderPath {
 				metadata.Location = newLocation
@@ -664,23 +696,12 @@ func add(a, b int) int { return a + b }
 func runGenerationLogic() error {
 	log.Println("Generating static site...")
 
-	// selectively clean dist directory while preserving assets
-	log.Println("Cleaning dist directory while preserving assets...")
+	// Completely remove and recreate dist directory as m4a cache is now persistent
+	if err := os.RemoveAll(distDir); err != nil {
+		return fmt.Errorf("failed to clean dist directory: %w", err)
+	}
 	if err := os.MkdirAll(assetsAudioDir, 0755); err != nil {
 		return fmt.Errorf("failed to create assets audio directory: %w", err)
-	}
-	dirEntries, err := os.ReadDir(distDir)
-	if err != nil {
-		return fmt.Errorf("failed to read dist directory: %w", err)
-	}
-	for _, entry := range dirEntries {
-		if entry.Name() != "assets" {
-			pathToRemove := filepath.Join(distDir, entry.Name())
-			log.Printf("Removing %s", pathToRemove)
-			if err := os.RemoveAll(pathToRemove); err != nil {
-				return fmt.Errorf("failed to remove %s: %w", pathToRemove, err)
-			}
-		}
 	}
 
 	groupedMetadata, err := loadAllMetadataGroupedByFolder()
@@ -697,39 +718,90 @@ func runGenerationLogic() error {
 		return flatMetadata[i].RecordDate.After(flatMetadata[j].RecordDate)
 	})
 
+	var processedMetadata []AudioMetadata // To store only valid, processed metadata
+
 	for i := range flatMetadata {
 		meta := &flatMetadata[i]
+		originalJsonPath := filepath.Join(jsonDir, strings.TrimSuffix(meta.SourceFilename, filepath.Ext(meta.SourceFilename))+".json")
+
 		srcWavPath := filepath.Join(wavDir, meta.SourceFilename)
-		dstAacPath := filepath.Join(distDir, meta.CompressedAudioPath)
+		m4aCacheFileRelPath := strings.TrimSuffix(meta.SourceFilename, filepath.Ext(meta.SourceFilename)) + ".m4a"
+		m4aCachePath := filepath.Join(m4aDir, m4aCacheFileRelPath)
 
-		// Optimization: Check if AAC file already exists and is up-to-date
-		dstAacInfo, err := os.Stat(dstAacPath)
-		srcWavInfo, srcErr := os.Stat(srcWavPath)
-
-		shouldTranscode := true
-		if err == nil && srcErr == nil { // Both files exist
-			if dstAacInfo.ModTime().After(srcWavInfo.ModTime()) {
-				log.Printf("Skipping transcoding for %s: %s is already up-to-date.", srcWavPath, filepath.Base(dstAacPath))
-				shouldTranscode = false
-				// Update metadata with existing AAC file info
-				meta.CompressedFileSizeMB = float64(dstAacInfo.Size()) / (1024 * 1024)
-			}
+		wavExists := false
+		if _, err := os.Stat(srcWavPath); err == nil {
+			wavExists = true
 		}
 
-		if shouldTranscode {
-			if err := transcodeToAac(srcWavPath, dstAacPath); err != nil {
-				log.Printf("Error transcoding %s to %s: %v", srcWavPath, dstAacPath, err)
-				meta.CompressedFileSizeMB = 0
-			} else {
-				if aacFileInfo, err := os.Stat(dstAacPath); err != nil {
-					log.Printf("Error getting info for transcoded AAC %s: %v", dstAacPath, err)
-					meta.CompressedFileSizeMB = 0
-				} else {
-					meta.CompressedFileSizeMB = float64(aacFileInfo.Size()) / (1024 * 1024)
+		m4aCacheExists := false
+		if _, err := os.Stat(m4aCachePath); err == nil {
+			m4aCacheExists = true
+		}
+
+		var currentSourcePath string // The path to the M4A file in the cache
+
+		if wavExists {
+			// Scenario 1: WAV file exists - prefer WAV as source
+			srcWavInfo, _ := os.Stat(srcWavPath) // Error already checked by wavExists
+			m4aCacheInfo, m4aCacheErr := os.Stat(m4aCachePath)
+
+			shouldTranscode := true
+			if m4aCacheErr == nil && m4aCacheInfo.ModTime().After(srcWavInfo.ModTime()) {
+				// M4A cache exists and is newer than WAV, no need to transcode
+				// log.Printf("Using existing M4A cache for %s (newer than WAV).", meta.SourceFilename) // Simplified log
+				shouldTranscode = false
+			}
+
+			if shouldTranscode {
+				// Transcode WAV to M4A cache
+				log.Printf("Transcoding %s to M4A cache...", meta.SourceFilename)
+				if err := transcodeToAac(srcWavPath, m4aCachePath); err != nil {
+					log.Printf("Error transcoding %s to M4A cache: %v. Skipping this audio.", meta.SourceFilename, err)
+					// If transcoding fails, we can't process this audio
+					continue
 				}
 			}
+			currentSourcePath = m4aCachePath
+
+		} else if m4aCacheExists {
+			// Scenario 2: WAV does not exist, but M4A cache exists - use cached M4A
+			log.Printf("WAV not found for %s. Using M4A from cache.", meta.SourceFilename)
+			currentSourcePath = m4aCachePath
+
+		} else {
+			// Scenario 3: Neither WAV nor M4A cache exists - audio is truly lost
+			log.Printf("Warning: WAV and M4A cache not found for %s. Deleting corresponding JSON: %s", meta.SourceFilename, originalJsonPath)
+			if err := os.Remove(originalJsonPath); err != nil {
+				log.Printf("Error deleting orphan JSON %s: %v", originalJsonPath, err)
+			}
+			continue // Skip this audio
 		}
+
+		// At this point, currentSourcePath points to a valid M4A in the cache
+		// Now copy it to dist/assets/audio and update metadata
+		relPath := m4aCacheFileRelPath // The relative path within assets/audio
+		
+		// Use the copyM4aToDist helper
+		compressedAudioPath, err := copyM4aToDist(currentSourcePath, relPath)
+		if err != nil {
+			log.Printf("Error copying M4A cache %s to dist: %v. Skipping this audio.", currentSourcePath, err)
+			continue
+		}
+		
+		meta.CompressedAudioPath = compressedAudioPath // Relative path for HTML
+		if aacFileInfo, err := os.Stat(currentSourcePath); err == nil {
+			meta.CompressedFileSizeMB = float64(aacFileInfo.Size()) / (1024 * 1024)
+		} else {
+			log.Printf("Warning: Could not get file info for cached M4A %s: %v", currentSourcePath, err)
+			meta.CompressedFileSizeMB = 0
+		}
+		
+		processedMetadata = append(processedMetadata, *meta)
 	}
+
+	// Replace flatMetadata with processedMetadata
+	flatMetadata = processedMetadata
+
 
 	tmpl, err := template.New("index.html.tmpl").Funcs(template.FuncMap{"Base": filepath.Base, "formatDuration": formatDuration, "add": add}).ParseFS(templateFS, "templates/index.html.tmpl")
 	if err != nil {
