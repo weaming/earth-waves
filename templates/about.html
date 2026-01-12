@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>关于 - Earth Waves 地球波动</title>
+    <link rel="icon" href="/icon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@1/css/pico.min.css">
+    <style>
+        body { padding: 1rem; }
+        .container { max-width: 800px; margin: 0 auto; }
+        .content { white-space: pre-wrap; line-height: 1.8; }
+        nav { margin-bottom: 2rem; }
+        
+        /* New rule for h1 margin */
+        header h1 {
+            margin-bottom: 0.5rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        {{ if .IsAdmin }}
+        <nav>
+            <ul>
+                <li><a href="/" role="button" class="secondary outline">‹ 返回主页</a></li>
+            </ul>
+        </nav>
+        {{ end }}
+        <main>
+            <article>
+                <header>
+                    <h1>关于我与地球波动</h1>
+                    {{ if .IsAdmin }}
+                    <p><a href="/edit-about">编辑内容</a></p>
+                    {{ end }}
+                </header>
+                <p class="content">{{ .Content }}</p>
+                <footer>
+                    <p>Email: <a href="mailto:{{ .Email }}">{{ .Email }}</a></p>
+                </footer>
+            </article>
+        </main>
+    </div>
+</body>
+</html>

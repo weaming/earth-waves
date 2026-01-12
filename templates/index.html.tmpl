@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Earth Waves 地球波动</title>
+    <meta name="description" content="一个由现场录音爱好者亲手录制的网站，收录了地球上各种自然声音，从森林里的鸟鸣到深海的波涛。聆听、放松，感受我们星球的脉搏。 (A website curated by a field recording enthusiast, collecting various natural sounds on Earth, from birdsong in the forest to the waves of the deep sea. Listen, relax, and feel the pulse of our planet.)">
+    <meta name="keywords" content="自然声音, 白噪音, 放松, 助眠, 录音, 地球, 海浪, 鸟鸣, natural sounds, white noise, relaxation, sleep aid, field recording, earth, ocean waves, bird song">
     <link rel="icon" href="icon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@picocss/pico@1/css/pico.min.css">
     <style>
@@ -82,6 +84,7 @@
                     <img src="icon.svg" alt="Logo" style="width: 32px; height: 32px; display: block;">
                 </li>
                 <li><strong>Earth Waves 地球波动：录音样本</strong></li>
+                <li><a href="./about.html">关于</a></li>
             </ul>
         </nav>
         <main>
@@ -89,18 +92,24 @@
                 <table>
                     <thead>
                         <tr>
+                            <th>播放</th>
                             <th>#</th>
                             <th>标题</th>
                             <th>时长</th>
                             <th>录音位置</th>
                             <th>录音时间</th>
                             <th>下载</th>
-                            <th>播放</th>
                         </tr>
                     </thead>
                     <tbody>
                         {{ range $index, $element := . }}
                         <tr data-track-index="{{ $index }}">
+                            <td class="action-cell">
+                                <button class="play-button table-action-button" data-index="{{ $index }}" title="播放/暂停">
+                                    <svg class="icon-play" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"></path></svg>
+                                    <svg class="icon-pause" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"></path></svg>
+                                </button>
+                            </td>
                             <td>{{ add $index 1 }}</td>
                             <td>{{ $element.Title }}</td>
                             <td>{{ formatDuration $element.DurationSeconds }}</td>
@@ -110,12 +119,6 @@
                                 <a href="{{ $element.CompressedAudioPath }}" class="table-action-button" download title="下载 AAC ({{ printf "%.2fMB" $element.CompressedFileSizeMB }})">
                                     <svg viewBox="0 0 24 24" fill="currentColor"><path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"></path></svg>
                                 </a>
-                            </td>
-                            <td class="action-cell">
-                                <button class="play-button table-action-button" data-index="{{ $index }}" title="播放/暂停">
-                                    <svg class="icon-play" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"></path></svg>
-                                    <svg class="icon-pause" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"></path></svg>
-                                </button>
                             </td>
                         </tr>
                         {{ else }}
