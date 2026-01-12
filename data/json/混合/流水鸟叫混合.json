@@ -1,0 +1,17 @@
+{
+  "source_filename": "混合/流水鸟叫混合.wav",
+  "title": "混合：流水、鸟叫",
+  "description": "",
+  "location": "亚公顶",
+  "record_date": "2026-01-11T23:29:40Z",
+  "duration_seconds": 378.961917,
+  "source_file_size_mb": 104.0855827331543,
+  "compressed_file_size_mb": 0,
+  "compressed_audio_path": "assets/audio/混合/流水鸟叫混合.m4a",
+  "tech_info": {
+    "sample_rate": 48000,
+    "bit_depth": 24,
+    "channels": 2,
+    "is_compressed": false
+  }
+}

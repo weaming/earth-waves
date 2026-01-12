@@ -1,0 +1,17 @@
+{
+  "source_filename": "海浪/涨潮.WAV",
+  "title": "涨潮",
+  "description": "",
+  "location": "背仔角",
+  "record_date": "2026-01-12T17:14:30+08:00",
+  "duration_seconds": 109.264083,
+  "source_file_size_mb": 40.014814376831055,
+  "compressed_file_size_mb": 0,
+  "compressed_audio_path": "assets/audio/海浪/涨潮.m4a",
+  "tech_info": {
+    "sample_rate": 48000,
+    "bit_depth": 32,
+    "channels": 2,
+    "is_compressed": false
+  }
+}

@@ -1,3 +1,6 @@
+ run:
+	go run . -wav data/wav
+
 gen:
 	go run . -wav data/wav -gen
 

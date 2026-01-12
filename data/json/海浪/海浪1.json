@@ -1,0 +1,17 @@
+{
+  "source_filename": "海浪/海浪1.wav",
+  "title": "海浪",
+  "description": "",
+  "location": "背仔角",
+  "record_date": "2026-01-12T21:17:06Z",
+  "duration_seconds": 823.92,
+  "source_file_size_mb": 301.7285575866699,
+  "compressed_file_size_mb": 0,
+  "compressed_audio_path": "assets/audio/海浪/海浪1.m4a",
+  "tech_info": {
+    "sample_rate": 48000,
+    "bit_depth": 32,
+    "channels": 2,
+    "is_compressed": false
+  }
+}
