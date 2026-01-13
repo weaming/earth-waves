@@ -10,7 +10,6 @@ import (
 )
 
 var setfileChecked = false
-var setfileAvailable = false
 
 // SetBirthTime sets the creation and modification time for a file on macOS.
 // It attempts to use the 'setfile' command-line tool, falling back to os.Chtimes.
