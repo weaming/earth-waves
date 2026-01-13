@@ -111,6 +111,19 @@
                 gap: 1rem;
             }
         }
+
+
+        /* fix main content overly with player */
+        figure {
+            max-height: calc(100vh - var(--player-height) - 73px);
+        }
+
+        @media (max-width: 768px) {
+            figure {
+                max-height: calc(100vh - var(--player-height) - 220px);
+            }
+        }
+
     </style>
 </head>
 <body>
