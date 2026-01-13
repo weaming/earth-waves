@@ -1,0 +1,16 @@
+{
+  "source_filename": "风/251225_041230_wind_leaves.WAV",
+  "title": "风吹树叶",
+  "description": "",
+  "location": "惠阳",
+  "record_date": "2025-12-25T04:12:30Z",
+  "duration_seconds": 9.16275,
+  "source_file_size_mb": 3.3566112518310547,
+  "compressed_file_size_mb": 0,
+  "compressed_audio_path": "assets/audio/风/251225_041230_wind_leaves.m4a",
+  "tech_info": {
+    "sample_rate": 48000,
+    "bit_depth": 32,
+    "channels": 2
+  }
+}

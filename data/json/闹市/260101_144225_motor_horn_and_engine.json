@@ -1,0 +1,16 @@
+{
+  "source_filename": "闹市/260101_144225_motor_horn_and_engine.WAV",
+  "title": "摩托喇叭和引擎声",
+  "description": "",
+  "location": "汕尾",
+  "record_date": "2026-01-01T14:42:24Z",
+  "duration_seconds": 19.810208,
+  "source_file_size_mb": 7.255826950073242,
+  "compressed_file_size_mb": 0,
+  "compressed_audio_path": "assets/audio/闹市/260101_144225_motor_horn_and_engine.m4a",
+  "tech_info": {
+    "sample_rate": 48000,
+    "bit_depth": 32,
+    "channels": 2
+  }
+}

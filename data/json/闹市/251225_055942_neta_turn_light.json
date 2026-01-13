@@ -1,0 +1,16 @@
+{
+  "source_filename": "闹市/251225_055942_neta_turn_light.WAV",
+  "title": "汽车转向灯",
+  "description": "",
+  "location": "车内",
+  "record_date": "2025-12-25T05:59:42Z",
+  "duration_seconds": 2.287521,
+  "source_file_size_mb": 0.8388271331787109,
+  "compressed_file_size_mb": 0,
+  "compressed_audio_path": "assets/audio/闹市/251225_055942_neta_turn_light.m4a",
+  "tech_info": {
+    "sample_rate": 48000,
+    "bit_depth": 32,
+    "channels": 2
+  }
+}

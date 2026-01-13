@@ -1,0 +1,16 @@
+{
+  "source_filename": "海浪/俄公湾 海浪 2.wav",
+  "title": "海浪 2",
+  "description": "",
+  "location": "俄公湾",
+  "record_date": "2026-01-11T02:02:25+08:00",
+  "duration_seconds": 109.124583,
+  "source_file_size_mb": 39.9626579284668,
+  "compressed_file_size_mb": 0,
+  "compressed_audio_path": "assets/audio/海浪/俄公湾 海浪 2.m4a",
+  "tech_info": {
+    "sample_rate": 48000,
+    "bit_depth": 32,
+    "channels": 2
+  }
+}

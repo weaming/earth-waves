@@ -1,0 +1,16 @@
+{
+  "source_filename": "海浪/校场尾无人海滩 海浪.wav",
+  "title": "海浪 1",
+  "description": "",
+  "location": "校场尾无人海滩",
+  "record_date": "2026-01-11T01:07:16+08:00",
+  "duration_seconds": 122.2,
+  "source_file_size_mb": 44.75101852416992,
+  "compressed_file_size_mb": 0,
+  "compressed_audio_path": "assets/audio/海浪/校场尾无人海滩 海浪.m4a",
+  "tech_info": {
+    "sample_rate": 48000,
+    "bit_depth": 32,
+    "channels": 2
+  }
+}
