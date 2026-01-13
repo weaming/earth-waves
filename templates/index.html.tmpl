@@ -74,6 +74,43 @@
         .player-controls button.main-play-pause:hover { border-color: var(--pico-primary-hover); }
         .player-controls svg { width: 1.5em; height: 1.5em; }
         #main-audio-player { display: none; }
+
+        /* Styles for the mode button wrapper to align with other controls */
+        .player-controls .mode-button-wrapper {
+            position: relative; /* Establish positioning context for absolute children */
+            height: 44px; /* Give it the same height as other buttons */
+            display: flex; /* Make it a flex container */
+            align-items: center; /* Vertically align button inside */
+            justify-content: center; /* Horizontally align button inside */
+            /* The text will be positioned absolutely */
+        }
+        .player-controls .mode-button-wrapper #mode-text {
+            position: absolute;
+            bottom: -8px; /* Further reduced spacing for tighter combination */
+            left: 50%;
+            font-size: 10px; /* Set a fixed base font size */
+            white-space: nowrap; /* Prevent text wrapping */
+            transform-origin: center top; /* Scale from the top-center */
+            transform: translateX(-50%) scale(0.8); /* Scale down for smaller appearance */
+        }
+
+        @media (max-width: 768px) {
+            :root {
+                --player-height: 120px;
+            }
+            .audio-player-container .container {
+                flex-direction: column;
+                justify-content: center;
+                gap: 0.5rem;
+                padding: 10px 0;
+            }
+            .player-timeline {
+                width: 100%;
+            }
+            .player-controls {
+                gap: 1rem;
+            }
+        }
     </style>
 </head>
 <body>
@@ -135,7 +172,7 @@
     <div class="audio-player-container">
         <div class="container">
             <div class="player-timeline">
-                <div id="current-track-title" class="track-info">请选择一首曲目</div>
+                <div id="current-track-title" class="track-info">未选择录音</div>
                 <div class="progress-bar-container">
                     <span id="current-time">00:00</span>
                     <input type="range" id="progress-bar" value="0" min="0" max="100" step="0.1">
@@ -143,11 +180,14 @@
                 </div>
             </div>
             <div class="player-controls">
-                <button id="mode-button" class="secondary outline" aria-label="播放模式">
-                    <svg class="icon-list-play" title="列表播放" viewBox="0 0 24 24" fill="currentColor"><path d="M4 10h12v2H4zm0-4h12v2H4zm0 8h8v2H4zm10 0v6l5-3z"></path></svg>
-                    <svg class="icon-list-loop" title="列表循环" viewBox="0 0 24 24" fill="currentColor" style="display: none;"><path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"></path></svg>
-                    <svg class="icon-single-loop" title="单曲循环" viewBox="0 0 24 24" fill="currentColor" style="display: none;"><path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z M11.5 8h1v8h-1z"></path></svg>
-                </button>
+                <div class="mode-button-wrapper" style="text-align: center;">
+                    <button id="mode-button" class="secondary outline" aria-label="播放模式">
+                        <svg class="icon-list-play" title="列表播放" viewBox="0 0 24 24" fill="currentColor"><path d="M4 10h12v2H4zm0-4h12v2H4zm0 8h8v2H4zm10 0v6l5-3z"></path></svg>
+                        <svg class="icon-list-loop" title="列表循环" viewBox="0 0 24 24" fill="currentColor" style="display: none;"><path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z"></path></svg>
+                        <svg class="icon-single-loop" title="单曲循环" viewBox="0 0 24 24" fill="currentColor" style="display: none;"><path d="M7 7h10v3l4-4-4-4v3H5v6h2V7zm10 10H7v-3l-4 4 4 4v-3h12v-6h-2v4z M11.25 8h1.5v8h-1.5z"></path></svg>
+                    </button>
+                    <small id="mode-text" style="font-size: 0.7em; display: block; margin-top: 4px;"></small>
+                </div>
                 <button id="prev-button" class="secondary outline" aria-label="上一曲" disabled>
                     <svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 6h2v12H6zm3.5 6 8.5 6V6z"></path></svg>
                 </button>
@@ -176,11 +216,25 @@
         const currentTimeEl = document.getElementById('current-time');
         const totalDurationEl = document.getElementById('total-duration');
         const modeBtn = document.getElementById('mode-button');
+        const modeTextEl = document.getElementById('mode-text'); // Defined modeTextEl
 
         // Playback State
         let currentTrackIndex = -1;
         const modes = ['list-play', 'list-loop', 'single-loop'];
-        let currentModeIndex = 0;
+        const modeTexts = ['列表播放', '列表循环', '单曲循环']; // Defined modeTexts
+        let currentModeIndex; // Declare currentModeIndex
+        // Initialize currentModeIndex from localStorage or default
+        const storedMode = localStorage.getItem('play-mode');
+        if (storedMode !== null) { // Check if item exists in local storage
+            const parsedMode = parseInt(storedMode, 10);
+            if (!isNaN(parsedMode) && parsedMode >= 0 && parsedMode < modes.length) {
+                currentModeIndex = parsedMode;
+            } else {
+                currentModeIndex = 2; // Default to single-loop if stored value is invalid
+            }
+        } else {
+            currentModeIndex = 2; // Default to single-loop if nothing is stored
+        }
         const tracks = [
             {{ range . }}
             { src: "{{ .CompressedAudioPath }}", title: "{{ .Title }}", duration: {{ .DurationSeconds }} },
@@ -209,6 +263,39 @@
             const mainPauseIcon = playPauseBtn.querySelector('.icon-pause');
             if (mainPlayIcon) mainPlayIcon.style.display = isPlaying ? 'none' : 'block';
             if (mainPauseIcon) mainPauseIcon.style.display = isPlaying ? 'block' : 'none';
+        }
+        
+        // Helper function to update the UI for the current mode (icon and text)
+        function updateModeUI() {
+            const currentMode = modes[currentModeIndex];
+            const icons = modeBtn.querySelectorAll('svg');
+            icons.forEach(icon => icon.style.display = 'none');
+            
+            if (currentMode === 'list-play') {
+                modeBtn.querySelector('.icon-list-play').style.display = 'block';
+            } else if (currentMode === 'list-loop') {
+                modeBtn.querySelector('.icon-list-loop').style.display = 'block';
+            } else { // single-loop
+                modeBtn.querySelector('.icon-single-loop').style.display = 'block';
+            }
+            modeTextEl.textContent = modeTexts[currentModeIndex]; // Update mode text
+        }
+
+        // Helper function to update the disabled state of playback controls
+        function updatePlaybackControlsState() {
+            const hasTracks = tracks.length > 0;
+            const isLoopingList = modes[currentModeIndex] === 'list-loop';
+            
+            playPauseBtn.disabled = !hasTracks;
+            modeBtn.disabled = !hasTracks;
+
+            if (hasTracks) {
+                prevBtn.disabled = (currentTrackIndex <= 0 && !isLoopingList);
+                nextBtn.disabled = (currentTrackIndex >= tracks.length - 1 && !isLoopingList);
+            } else {
+                prevBtn.disabled = true;
+                nextBtn.disabled = true;
+            }
         }
         
         // Core Player Logic
@@ -241,6 +328,7 @@
             trackTitle.textContent = track.title;
             totalDurationEl.textContent = formatTime(track.duration);
             audioPlayer.play();
+            updatePlaybackControlsState(); // Update controls after track change
         }
 
         // Event Listeners
@@ -269,14 +357,12 @@
         nextBtn.addEventListener('click', () => playTrack(currentTrackIndex + 1));
 
         audioPlayer.addEventListener('play', () => {
-            playPauseBtn.disabled = false;
-            const isLooping = modes[currentModeIndex] === 'list-loop';
-            prevBtn.disabled = (currentTrackIndex === 0 && !isLooping);
-            nextBtn.disabled = (currentTrackIndex >= tracks.length - 1 && !isLooping);
+            updatePlaybackControlsState();
             updatePlayerUI(currentTrackIndex, true);
         });
 
         audioPlayer.addEventListener('pause', () => {
+            updatePlaybackControlsState();
             updatePlayerUI(currentTrackIndex, false);
         });
 
@@ -304,30 +390,16 @@
 
         modeBtn.addEventListener('click', () => {
             currentModeIndex = (currentModeIndex + 1) % modes.length;
-            const currentMode = modes[currentModeIndex];
-            
-            const icons = modeBtn.querySelectorAll('svg');
-            icons.forEach(icon => icon.style.display = 'none');
-            
-            if (currentMode === 'list-play') {
-                modeBtn.querySelector('.icon-list-play').style.display = 'block';
-            } else if (currentMode === 'list-loop') {
-                modeBtn.querySelector('.icon-list-loop').style.display = 'block';
-            } else { // single-loop
-                modeBtn.querySelector('.icon-single-loop').style.display = 'block';
-            }
+            localStorage.setItem('play-mode', currentModeIndex);
+            updateModeUI(); // Update mode icon and text
+            updatePlaybackControlsState(); // Update prev/next button states
+            modeBtn.blur();
         });
 
         // Initial setup on page load
-        if (tracks.length > 0) {
-            playPauseBtn.disabled = false;
-            updatePlayerUI(-1, false);
-        } else {
-            playPauseBtn.disabled = true;
-            prevBtn.disabled = true;
-            nextBtn.disabled = true;
-            modeBtn.disabled = true;
-        }
+        updatePlaybackControlsState();
+        updatePlayerUI(-1, false); // Initialize UI with no track playing
+        updateModeUI();
 
         // Global spacebar for play/pause
         document.addEventListener('keydown', (event) => {
