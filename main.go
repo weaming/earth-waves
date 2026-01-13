@@ -45,6 +45,9 @@ type EditPageData struct {
 //go:embed templates/*
 var templateFS embed.FS
 
+//go:embed icon.svg
+var iconFS embed.FS
+
 // specialJsonFiles 列出了所有非音频元数据的特殊 JSON 文件，在处理时需要跳过
 var specialJsonFiles = []string{"about.json", "settings.json"}
 
@@ -54,16 +57,15 @@ type AudioMetadata struct {
 	Title                string    `json:"title"`
 	Description          string    `json:"description"`
 	Location             string    `json:"location"`
-	RecordDate           time.Time `json:"record_date"`
+	RecordDate           time.Time `json:"record_date"` // Use default time.Time
 	DurationSeconds      float64   `json:"duration_seconds"`
 	SourceFileSizeMB     float64   `json:"source_file_size_mb"`     // 源文件大小(MB)
 	CompressedFileSizeMB float64   `json:"compressed_file_size_mb"` // 压缩后文件大小(MB)
 	CompressedAudioPath  string    `json:"compressed_audio_path"`   // 相对于dist目录的路径
 	TechInfo             struct {
-		SampleRate   int  `json:"sample_rate"`
-		BitDepth     int  `json:"bit_depth"`
-		Channels     int  `json:"channels"`
-		IsCompressed bool `json:"is_compressed"`
+		SampleRate int `json:"sample_rate"`
+		BitDepth   int `json:"bit_depth"`
+		Channels   int `json:"channels"`
 	} `json:"tech_info"`
 }
 
@@ -115,6 +117,12 @@ func main() {
 	}
 	fmt.Println("Audio data initialization complete.")
 
+	fmt.Println("Syncing audio times...")
+	if err := syncAudioData(); err != nil {
+		log.Fatalf("Error syncing audio data: %v", err)
+	}
+	fmt.Println("Audio time synchronization complete.")
+
 	// --- 根据 -gen 参数决定执行流程 ---
 	if *genFlag {
 		// 直接生成并退出
@@ -130,6 +138,16 @@ func main() {
 }
 
 func startWebServer() {
+	http.HandleFunc("/icon.svg", func(w http.ResponseWriter, r *http.Request) {
+		iconContent, err := iconFS.ReadFile("icon.svg")
+		if err != nil {
+			http.Error(w, "Internal Server Error", 500)
+			log.Printf("Error reading embedded icon.svg: %v", err)
+			return
+		}
+		w.Header().Set("Content-Type", "image/svg+xml")
+		w.Write(iconContent)
+	})
 	http.HandleFunc("/", adminHandler)
 	http.HandleFunc("/about", aboutHandler)
 	http.HandleFunc("/edit-about", editAboutHandler)
@@ -192,26 +210,22 @@ func initAudioData() error {
 			}
 			var metadata AudioMetadata
 			newFile := false
-			recordDateFromFilename, okFromFilename := parseTimeFromFilename(info.Name())
-			recordDateToUse := getCreationTime(info)
-			if okFromFilename {
-				recordDateToUse = recordDateFromFilename
-			}
 			jsonContent, err := os.ReadFile(jsonFilePath)
 			if err != nil {
 				if os.IsNotExist(err) {
 					newFile = true
+					// Get creation time for the new file
+					recordDate := GetBirthTime(info)
+					// Try to parse time from filename, and if successful, use it instead
+					if t, ok := parseTimeFromFilename(info.Name()); ok {
+						recordDate = t
+					}
 					metadata = AudioMetadata{
 						SourceFilename:   relPath,
 						Title:            strings.TrimSuffix(info.Name(), filepath.Ext(info.Name())),
-						RecordDate:       recordDateToUse,
+						RecordDate:       recordDate, // Set initial record date
 						SourceFileSizeMB: float64(info.Size()) / (1024 * 1024),
-						TechInfo: struct {
-							SampleRate   int  `json:"sample_rate"`
-							BitDepth     int  `json:"bit_depth"`
-							Channels     int  `json:"channels"`
-							IsCompressed bool `json:"is_compressed"`
-						}{IsCompressed: false},
+						TechInfo:         AudioMetadata{}.TechInfo,
 					}
 				} else {
 					return fmt.Errorf("failed to read json file %s: %w", jsonFilePath, err)
@@ -220,34 +234,43 @@ func initAudioData() error {
 				if err := json.Unmarshal(jsonContent, &metadata); err != nil {
 					newFile = true
 					log.Printf("Failed to unmarshal json %s: %v. Re-creating metadata.", jsonFilePath, err)
+					recordDate := GetBirthTime(info)
+					if t, ok := parseTimeFromFilename(info.Name()); ok {
+						recordDate = t
+					}
 					metadata = AudioMetadata{
 						SourceFilename:   relPath,
 						Title:            strings.TrimSuffix(info.Name(), filepath.Ext(info.Name())),
-						RecordDate:       recordDateToUse,
+						RecordDate:       recordDate,
 						SourceFileSizeMB: float64(info.Size()) / (1024 * 1024),
-						TechInfo: struct {
-							SampleRate   int  `json:"sample_rate"`
-							BitDepth     int  `json:"bit_depth"`
-							Channels     int  `json:"channels"`
-							IsCompressed bool `json:"is_compressed"`
-						}{IsCompressed: false},
+						TechInfo:         AudioMetadata{}.TechInfo,
 					}
 				} else {
-					metadata.RecordDate = recordDateToUse
+					// Update size, as it might have changed
 					metadata.SourceFileSizeMB = float64(info.Size()) / (1024 * 1024)
 				}
 			}
+
+			// Get tech info only if it's a new file or seems to be missing
 			if newFile || metadata.TechInfo.SampleRate == 0 {
 				duration, sampleRate, bitDepth, channels, err := getAudioTechInfo(path)
 				if err != nil {
 					log.Printf("Warning: Failed to get tech info for %s: %v", info.Name(), err)
 				} else {
-					metadata.DurationSeconds, metadata.TechInfo.SampleRate, metadata.TechInfo.BitDepth, metadata.TechInfo.Channels = duration, sampleRate, bitDepth, channels
+					metadata.DurationSeconds = duration
+					metadata.TechInfo.SampleRate = sampleRate
+					metadata.TechInfo.BitDepth = bitDepth
+					metadata.TechInfo.Channels = channels
 				}
 			}
+
+			// Always ensure these fields are correct
 			aacRelPath := strings.TrimSuffix(relPath, filepath.Ext(relPath)) + ".m4a"
 			metadata.CompressedAudioPath = filepath.ToSlash(filepath.Join("assets", "audio", aacRelPath))
+			metadata.SourceFilename = relPath // Ensure source filename is up-to-date
 			metadata.Title, metadata.Description, metadata.Location = strings.ReplaceAll(metadata.Title, "\r", ""), strings.ReplaceAll(metadata.Description, "\r", ""), strings.ReplaceAll(metadata.Location, "\r", "")
+
+			// Write back the JSON file
 			updatedJsonContent, err := json.MarshalIndent(metadata, "", "  ")
 			if err != nil {
 				return fmt.Errorf("failed to marshal json for %s: %w", info.Name(), err)
@@ -299,6 +322,67 @@ func initAudioData() error {
 		return nil
 	})
 	return walkErr
+}
+
+func syncAudioData() error {
+	audioDirs := []string{wavDir, m4aDir}
+	for _, dir := range audioDirs {
+		walkErr := filepath.Walk(dir, func(path string, info os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+			if !info.IsDir() && (strings.HasSuffix(strings.ToLower(info.Name()), ".wav") || strings.HasSuffix(strings.ToLower(info.Name()), ".m4a")) {
+				// Determine the base directory (wavDir or m4aDir) to correctly calculate the relative path
+				var baseDir string
+				if strings.HasPrefix(path, wavDir) {
+					baseDir = wavDir
+				} else {
+					baseDir = m4aDir
+				}
+
+				relPath, err := filepath.Rel(baseDir, path)
+				if err != nil {
+					return fmt.Errorf("failed to get relative path for %s: %w", path, err)
+				}
+
+				jsonFileRelPath := strings.TrimSuffix(relPath, filepath.Ext(relPath)) + ".json"
+				jsonFilePath := filepath.Join(jsonDir, jsonFileRelPath)
+
+				if _, err := os.Stat(jsonFilePath); os.IsNotExist(err) {
+					// JSON file doesn't exist, initAudioData will handle creating it for WAVs.
+					// For M4A-only cases, we might need a separate creation logic if desired.
+					return nil
+				}
+
+				metadata, err := loadAudioMetadata(jsonFilePath)
+				if err != nil {
+					log.Printf("Warning: could not load metadata for %s to sync time: %v", jsonFilePath, err)
+					return nil // Continue to next file
+				}
+
+				birthTime := GetBirthTime(info)
+
+				// Only update if the time is different to avoid unnecessary writes
+				if !metadata.RecordDate.Equal(birthTime) {
+					log.Printf("Syncing time for %s. Old: %s, New: %s", relPath, metadata.RecordDate.Format(time.RFC3339), birthTime.Format(time.RFC3339))
+					metadata.RecordDate = birthTime
+					updatedJsonContent, err := json.MarshalIndent(metadata, "", "  ")
+					if err != nil {
+						log.Printf("Failed to marshal json for %s during time sync: %v", info.Name(), err)
+						return nil // Continue
+					}
+					if err := os.WriteFile(jsonFilePath, updatedJsonContent, 0644); err != nil {
+						log.Printf("Failed to write json file %s during time sync: %v", jsonFilePath, err)
+					}
+				}
+			}
+			return nil
+		})
+		if walkErr != nil {
+			return fmt.Errorf("error walking through %s directory for sync: %w", dir, walkErr)
+		}
+	}
+	return nil
 }
 
 func getAudioTechInfo(audioPath string) (duration float64, sampleRate, bitDepth, channels int, err error) {
@@ -529,6 +613,14 @@ func adminHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Internal Server Error", 500)
 		return
 	}
+
+	// Sort files within each folder by record date in descending order
+	for _, files := range groupedMetadata {
+		sort.Slice(files, func(i, j int) bool {
+			return files[i].RecordDate.After(files[j].RecordDate)
+		})
+	}
+
 	if err := tmpl.Execute(w, groupedMetadata); err != nil {
 		log.Printf("Error executing template: %v", err)
 		http.Error(w, "Internal Server Error", 500)
@@ -581,7 +673,6 @@ func saveHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	folderPath := r.FormValue("folder_path")
 	newBaseFilename := r.FormValue("base_filename")
-	newRecordDateStr := r.FormValue("record_date")
 
 	ext := filepath.Ext(oldSourceFilename) // Get extension once
 
@@ -615,7 +706,7 @@ func saveHandler(w http.ResponseWriter, r *http.Request) {
 				// Old file does not exist, nothing to rename, treat as success
 				return nil
 			}
-			
+
 			// Old file exists, target does not (or is not critical). Attempt rename.
 			if err := os.Rename(oldPath, newPath); err != nil {
 				return fmt.Errorf("failed to rename %s to %s: %w", oldPath, newPath, err)
@@ -645,8 +736,6 @@ func saveHandler(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// --- Load and Update Metadata ---
-	// NOTE: We still load using the *original* source filename because the file has already been moved.
-	// We are just updating the contents of the (now renamed) JSON file.
 	jsonFileRelPath := strings.TrimSuffix(currentSourceFilename, ext) + ".json"
 	jsonFilePath := filepath.Join(jsonDir, jsonFileRelPath)
 
@@ -659,36 +748,47 @@ func saveHandler(w http.ResponseWriter, r *http.Request) {
 
 	// Update metadata from form
 	metadata.SourceFilename = currentSourceFilename // Update to new filename if changed
+	aacRelPath := strings.TrimSuffix(currentSourceFilename, ext) + ".m4a"
+	metadata.CompressedAudioPath = filepath.ToSlash(filepath.Join("assets", "audio", aacRelPath))
 	metadata.Title = strings.ReplaceAll(r.FormValue("title"), "\r", "")
 	metadata.Description = strings.ReplaceAll(r.FormValue("description"), "\r", "")
 	metadata.Location = strings.ReplaceAll(r.FormValue("location"), "\r", "")
 
 	// --- Handle Time Change ---
-	var newRecordTime time.Time
-	if newRecordDateStr != "" {
-		if parsedTime, err := time.Parse("2006-01-02 15:04:05", newRecordDateStr); err != nil {
-			log.Printf("Warning: Failed to parse record_date '%s': %v. Time not changed.", newRecordDateStr, err)
-			newRecordTime = metadata.RecordDate // Keep old time if parse fails
+	newRecordDateStr := r.FormValue("record_date_date")
+	newRecordTimeStr := r.FormValue("record_date_time")
+
+	if newRecordDateStr != "" && newRecordTimeStr != "" {
+		dateTimeStr := newRecordDateStr + " " + newRecordTimeStr
+		if parsedTime, err := time.Parse("2006-01-02 15:04:05", dateTimeStr); err != nil {
+			log.Printf("Warning: Failed to parse new record date-time '%s': %v. Time not changed.", dateTimeStr, err)
 		} else {
-			newRecordTime = parsedTime
+			log.Printf("Successfully parsed new record_date: %s", dateTimeStr)
+			newRecordTime := parsedTime
 			metadata.RecordDate = newRecordTime
 
 			// Apply the new time to the file system
 			finalWavPath := filepath.Join(wavDir, currentSourceFilename)
-			if err := setFileTime(finalWavPath, newRecordTime); err != nil {
+			if err := SetBirthTime(finalWavPath, newRecordTime); err != nil {
 				log.Printf("Warning: Failed to set file modification time for %s: %v", finalWavPath, err)
 			} else {
-				log.Printf("Set modification time for %s to %s", finalWavPath, newRecordTime.Format("2006-01-02 15:04:05"))
+				log.Printf("Attempted to set creation time for %s to %s", finalWavPath, newRecordTime.Format("2006-01-02 15:04:05"))
 			}
+
 			// Also update the json file time for consistency
-			if err := setFileTime(jsonFilePath, newRecordTime); err != nil {
+			if err := SetBirthTime(jsonFilePath, newRecordTime); err != nil {
 				log.Printf("Warning: Failed to set file modification time for %s: %v", jsonFilePath, err)
+			} else {
+				log.Printf("Attempted to set creation time for %s to %s", jsonFilePath, newRecordTime.Format("2006-01-02 15:04:05"))
 			}
+
 			// Also update the m4a file time for consistency
 			finalM4aPath := filepath.Join(m4aDir, strings.TrimSuffix(currentSourceFilename, ext)+".m4a")
 			if _, err := os.Stat(finalM4aPath); err == nil {
-				if err := setFileTime(finalM4aPath, newRecordTime); err != nil {
+				if err := SetBirthTime(finalM4aPath, newRecordTime); err != nil {
 					log.Printf("Warning: Failed to set file modification time for %s: %v", finalM4aPath, err)
+				} else {
+					log.Printf("Attempted to set creation time for %s to %s", finalM4aPath, newRecordTime.Format("2006-01-02 15:04:05"))
 				}
 			}
 		}
@@ -849,11 +949,6 @@ func deleteHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
-// setFileTime changes the modification and access time of a file.
-func setFileTime(path string, newTime time.Time) error {
-	return os.Chtimes(path, newTime, newTime)
-}
-
 func copyFile(src, dst string) error {
 	in, err := os.Open(src)
 	if err != nil {
@@ -931,9 +1026,8 @@ func runGenerationLogic() error {
 			m4aCacheInfo, m4aCacheErr := os.Stat(m4aCachePath)
 
 			shouldTranscode := true
-			if m4aCacheErr == nil && m4aCacheInfo.ModTime().After(srcWavInfo.ModTime()) {
-				// M4A cache exists and is newer than WAV, no need to transcode
-				// log.Printf("Using existing M4A cache for %s (newer than WAV).", meta.SourceFilename) // Simplified log
+			if m4aCacheErr == nil && !m4aCacheInfo.ModTime().Before(srcWavInfo.ModTime()) {
+				// M4A cache exists and is not older than WAV, no need to transcode
 				shouldTranscode = false
 			}
 
@@ -946,17 +1040,66 @@ func runGenerationLogic() error {
 					continue
 				}
 				// Sync file time from WAV to M4A
-				wavTime := getCreationTime(srcWavInfo) // Using the existing cross-platform function
-				if err := setFileTime(m4aCachePath, wavTime); err != nil {
+				wavTime := srcWavInfo.ModTime() // Use ModTime for consistent comparison
+				if err := SetBirthTime(m4aCachePath, wavTime); err != nil {
 					log.Printf("Warning: Failed to sync file time to M4A cache for %s: %v", m4aCachePath, err)
 				}
 			}
 			currentSourcePath = m4aCachePath
 
 		} else if m4aCacheExists {
+
 			// Scenario 2: WAV does not exist, but M4A cache exists - use cached M4A
+
 			log.Printf("WAV not found for %s. Using M4A from cache.", meta.SourceFilename)
+
 			currentSourcePath = m4aCachePath
+
+			// If the tech info in the JSON is missing, get it from the M4A file and update JSON
+
+			if meta.TechInfo.SampleRate == 0 || meta.DurationSeconds == 0 {
+
+				log.Printf("Re-evaluating tech info from M4A cache for %s...", meta.SourceFilename)
+
+				duration, sampleRate, bitDepth, channels, err := getAudioTechInfo(currentSourcePath)
+
+				if err != nil {
+
+					log.Printf("Warning: Failed to get tech info from M4A cache %s: %v", currentSourcePath, err)
+
+				} else {
+
+					meta.DurationSeconds = duration
+
+					meta.TechInfo.SampleRate = sampleRate
+
+					meta.TechInfo.BitDepth = bitDepth
+
+					meta.TechInfo.Channels = channels
+
+					log.Printf("Updating JSON file for %s with info from M4A cache.", meta.SourceFilename)
+
+					originalJsonPath := filepath.Join(jsonDir, strings.TrimSuffix(meta.SourceFilename, filepath.Ext(meta.SourceFilename))+".json")
+
+					updatedJsonContent, err := json.MarshalIndent(meta, "", "  ")
+
+					if err != nil {
+
+						log.Printf("Warning: Failed to marshal updated metadata for %s: %v", meta.SourceFilename, err)
+
+					} else {
+
+						if err := os.WriteFile(originalJsonPath, updatedJsonContent, 0644); err != nil {
+
+							log.Printf("Warning: Failed to write updated JSON file %s: %v", originalJsonPath, err)
+
+						}
+
+					}
+
+				}
+
+			}
 
 		} else {
 			// Scenario 3: Neither WAV nor M4A cache exists - audio is truly lost

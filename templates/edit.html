@@ -42,8 +42,10 @@
             <input type="text" id="location" name="location" value="{{ .Location }}">
 
             <div>
-                <label for="record_date">录音时间</label>
-                <input type="text" id="record_date" name="record_date" value="{{ .RecordDate.Format "2006-01-02 15:04:05" }}">
+                <label for="record_date_date">录音日期</label>
+                <input type="date" id="record_date_date" name="record_date_date" value="{{ .RecordDate.Format "2006-01-02" }}">
+                <label for="record_date_time">录音时间</label>
+                <input type="time" id="record_date_time" name="record_date_time" value="{{ .RecordDate.Format "15:04:05" }}" step="1">
             </div>
 
             <div class="grid">
