@@ -35,6 +35,13 @@ type AboutPageData struct {
 	IsAdmin bool
 }
 
+// EditPageData is used to pass data to the edit.html template
+type EditPageData struct {
+	AudioMetadata
+	BaseFilename string
+	FolderPath   string
+}
+
 //go:embed templates/*
 var templateFS embed.FS
 
@@ -540,13 +547,22 @@ func editHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Audio not found", 404)
 		return
 	}
+
+	// Prepare data for the template
+	ext := filepath.Ext(metadata.SourceFilename)
+	data := EditPageData{
+		AudioMetadata: metadata,
+		BaseFilename:  strings.TrimSuffix(filepath.Base(metadata.SourceFilename), ext),
+		FolderPath:    filepath.Dir(metadata.SourceFilename),
+	}
+
 	tmpl, err := template.New("edit.html").Funcs(template.FuncMap{"Base": filepath.Base}).ParseFS(templateFS, "templates/edit.html")
 	if err != nil {
 		log.Printf("Error parsing template edit.html: %v", err)
 		http.Error(w, "Internal Server Error", 500)
 		return
 	}
-	if err := tmpl.Execute(w, metadata); err != nil {
+	if err := tmpl.Execute(w, data); err != nil {
 		log.Printf("Error executing template: %v", err)
 		http.Error(w, "Internal Server Error", 500)
 	}
@@ -557,32 +573,131 @@ func saveHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Only POST requests are allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	sourceFilename := r.FormValue("source_filename")
-	if sourceFilename == "" {
+	// --- Get form data ---
+	oldSourceFilename := r.FormValue("source_filename")
+	if oldSourceFilename == "" {
 		http.Error(w, "Source filename is missing", 400)
 		return
 	}
-	metadata, err := getMetadataBySourceFilename(sourceFilename)
+	folderPath := r.FormValue("folder_path")
+	newBaseFilename := r.FormValue("base_filename")
+	newRecordDateStr := r.FormValue("record_date")
+
+	ext := filepath.Ext(oldSourceFilename) // Get extension once
+
+	// --- Handle Renaming ---
+	// Reconstruct the new relative filename
+	newSourceFilename := filepath.Join(folderPath, newBaseFilename+ext)
+	currentSourceFilename := oldSourceFilename // This will be updated if rename succeeds
+
+	if newSourceFilename != oldSourceFilename {
+		log.Printf("Rename requested: %s -> %s", oldSourceFilename, newSourceFilename)
+
+		// Define old and new paths for all related files
+		oldWavPath := filepath.Join(wavDir, oldSourceFilename)
+		newWavPath := filepath.Join(wavDir, newSourceFilename)
+		oldJsonPath := filepath.Join(jsonDir, strings.TrimSuffix(oldSourceFilename, ext)+".json")
+		newJsonPath := filepath.Join(jsonDir, strings.TrimSuffix(newSourceFilename, ext)+".json")
+		oldM4aPath := filepath.Join(m4aDir, strings.TrimSuffix(oldSourceFilename, ext)+".m4a")
+		newM4aPath := filepath.Join(m4aDir, strings.TrimSuffix(newSourceFilename, ext)+".m4a")
+
+		// Helper function to safely rename a file if it exists, and handle target existence
+		safeRename := func(oldPath, newPath string, isCritical bool) error {
+			_, oldPathExistsErr := os.Stat(oldPath)
+			_, newPathExistsErr := os.Stat(newPath)
+
+			if !os.IsNotExist(newPathExistsErr) {
+				// Target file already exists and is not an "does not exist" error
+				return fmt.Errorf("target file %s already exists", newPath)
+			}
+
+			if os.IsNotExist(oldPathExistsErr) {
+				// Old file does not exist, nothing to rename, treat as success
+				return nil
+			}
+			
+			// Old file exists, target does not (or is not critical). Attempt rename.
+			if err := os.Rename(oldPath, newPath); err != nil {
+				return fmt.Errorf("failed to rename %s to %s: %w", oldPath, newPath, err)
+			}
+			log.Printf("Renamed %s to %s", oldPath, newPath)
+			return nil
+		}
+
+		// Perform renames with error handling
+		if err := safeRename(oldWavPath, newWavPath, true); err != nil {
+			log.Printf("Error renaming WAV file: %v", err)
+			http.Error(w, fmt.Sprintf("Failed to rename WAV file: %v", err), http.StatusInternalServerError)
+			return
+		}
+		if err := safeRename(oldJsonPath, newJsonPath, true); err != nil {
+			log.Printf("Error renaming JSON file: %v", err)
+			http.Error(w, fmt.Sprintf("Failed to rename JSON metadata file: %v", err), http.StatusInternalServerError)
+			return
+		}
+		// M4A is cache, if it fails to rename, it's not critical enough to fail the whole save.
+		// Just log a warning and continue.
+		if err := safeRename(oldM4aPath, newM4aPath, false); err != nil {
+			log.Printf("Warning: Failed to rename M4A cache file: %v", err)
+		}
+
+		currentSourceFilename = newSourceFilename
+	}
+
+	// --- Load and Update Metadata ---
+	// NOTE: We still load using the *original* source filename because the file has already been moved.
+	// We are just updating the contents of the (now renamed) JSON file.
+	jsonFileRelPath := strings.TrimSuffix(currentSourceFilename, ext) + ".json"
+	jsonFilePath := filepath.Join(jsonDir, jsonFileRelPath)
+
+	metadata, err := loadAudioMetadata(jsonFilePath)
 	if err != nil {
-		log.Printf("Error getting metadata for %s during save: %v", sourceFilename, err)
-		http.Error(w, "Audio not found", 404)
+		log.Printf("Error getting metadata for %s during save: %v", currentSourceFilename, err)
+		http.Error(w, "Audio metadata not found after potential rename.", 404)
 		return
 	}
+
+	// Update metadata from form
+	metadata.SourceFilename = currentSourceFilename // Update to new filename if changed
 	metadata.Title = strings.ReplaceAll(r.FormValue("title"), "\r", "")
 	metadata.Description = strings.ReplaceAll(r.FormValue("description"), "\r", "")
 	metadata.Location = strings.ReplaceAll(r.FormValue("location"), "\r", "")
-	if recordDateStr := r.FormValue("record_date"); recordDateStr != "" {
-		if parsedTime, err := time.Parse("2006-01-02 15:04:05", recordDateStr); err != nil {
-			log.Printf("Warning: Failed to parse record_date '%s': %v", recordDateStr, err)
+
+	// --- Handle Time Change ---
+	var newRecordTime time.Time
+	if newRecordDateStr != "" {
+		if parsedTime, err := time.Parse("2006-01-02 15:04:05", newRecordDateStr); err != nil {
+			log.Printf("Warning: Failed to parse record_date '%s': %v. Time not changed.", newRecordDateStr, err)
+			newRecordTime = metadata.RecordDate // Keep old time if parse fails
 		} else {
-			metadata.RecordDate = parsedTime
+			newRecordTime = parsedTime
+			metadata.RecordDate = newRecordTime
+
+			// Apply the new time to the file system
+			finalWavPath := filepath.Join(wavDir, currentSourceFilename)
+			if err := setFileTime(finalWavPath, newRecordTime); err != nil {
+				log.Printf("Warning: Failed to set file modification time for %s: %v", finalWavPath, err)
+			} else {
+				log.Printf("Set modification time for %s to %s", finalWavPath, newRecordTime.Format("2006-01-02 15:04:05"))
+			}
+			// Also update the json file time for consistency
+			if err := setFileTime(jsonFilePath, newRecordTime); err != nil {
+				log.Printf("Warning: Failed to set file modification time for %s: %v", jsonFilePath, err)
+			}
+			// Also update the m4a file time for consistency
+			finalM4aPath := filepath.Join(m4aDir, strings.TrimSuffix(currentSourceFilename, ext)+".m4a")
+			if _, err := os.Stat(finalM4aPath); err == nil {
+				if err := setFileTime(finalM4aPath, newRecordTime); err != nil {
+					log.Printf("Warning: Failed to set file modification time for %s: %v", finalM4aPath, err)
+				}
+			}
 		}
 	}
-	jsonFileRelPath := strings.TrimSuffix(sourceFilename, filepath.Ext(sourceFilename)) + ".json"
-	jsonFilePath := filepath.Join(jsonDir, jsonFileRelPath)
+
+	// --- Save Final Metadata ---
 	updatedJsonContent, err := json.MarshalIndent(metadata, "", "  ")
 	if err != nil {
-		log.Printf("Failed to marshal json for %s: %v", sourceFilename, err)
+		log.Printf("Failed to marshal json for %s: %v", currentSourceFilename, err)
 		http.Error(w, "Failed to save metadata", 500)
 		return
 	}
@@ -734,6 +849,11 @@ func deleteHandler(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
+// setFileTime changes the modification and access time of a file.
+func setFileTime(path string, newTime time.Time) error {
+	return os.Chtimes(path, newTime, newTime)
+}
+
 func copyFile(src, dst string) error {
 	in, err := os.Open(src)
 	if err != nil {
@@ -824,6 +944,11 @@ func runGenerationLogic() error {
 					log.Printf("Error transcoding %s to M4A cache: %v. Skipping this audio.", meta.SourceFilename, err)
 					// If transcoding fails, we can't process this audio
 					continue
+				}
+				// Sync file time from WAV to M4A
+				wavTime := getCreationTime(srcWavInfo) // Using the existing cross-platform function
+				if err := setFileTime(m4aCachePath, wavTime); err != nil {
+					log.Printf("Warning: Failed to sync file time to M4A cache for %s: %v", m4aCachePath, err)
 				}
 			}
 			currentSourcePath = m4aCachePath
