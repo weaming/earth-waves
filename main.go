@@ -131,6 +131,7 @@ func startWebServer() {
 	http.HandleFunc("/save", saveHandler)
 	http.HandleFunc("/edit-folder", editFolderHandler)
 	http.HandleFunc("/save-folder", saveFolderHandler)
+	http.HandleFunc("/delete", deleteHandler)
 	http.HandleFunc("/generate", generateStaticSiteHandler)
 	http.Handle("/site/", http.StripPrefix("/site/", http.FileServer(http.Dir(distDir))))
 	fmt.Println("Admin server starting on http://localhost:8080")
@@ -665,6 +666,71 @@ func saveFolderHandler(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Error processing folder update", 500)
 		return
 	}
+	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+// isDirEmpty checks if a directory is empty.
+func isDirEmpty(name string) (bool, error) {
+	f, err := os.Open(name)
+	if err != nil {
+		return false, err
+	}
+	defer f.Close()
+
+	// Read just one entry from the directory.
+	// If it's not EOF, the directory is not empty.
+	_, err = f.Readdir(1)
+	if err == io.EOF {
+		return true, nil
+	}
+	return false, err
+}
+
+func deleteHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Only POST requests are allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	sourceFilename := r.FormValue("filename")
+	if sourceFilename == "" {
+		http.Error(w, "Filename parameter is missing", http.StatusBadRequest)
+		return
+	}
+
+	// Construct file paths
+	wavPath := filepath.Join(wavDir, sourceFilename)
+	jsonPath := filepath.Join(jsonDir, strings.TrimSuffix(sourceFilename, filepath.Ext(sourceFilename))+".json")
+	m4aPath := filepath.Join(m4aDir, strings.TrimSuffix(sourceFilename, filepath.Ext(sourceFilename))+".m4a")
+
+	// Delete the files
+	filesToDelete := []string{wavPath, jsonPath, m4aPath}
+	for _, path := range filesToDelete {
+		err := os.Remove(path)
+		if err != nil && !os.IsNotExist(err) {
+			log.Printf("Failed to delete file %s: %v", path, err)
+			// For robustness, we don't stop, just log the error.
+		} else if err == nil {
+			log.Printf("Deleted file: %s", path)
+		}
+	}
+
+	// Check and delete parent directories if they are empty
+	dirsToCheck := []string{filepath.Dir(wavPath), filepath.Dir(jsonPath), filepath.Dir(m4aPath)}
+	rootDirs := []string{wavDir, jsonDir, m4aDir}
+	for i, dir := range dirsToCheck {
+		// Ensure we don't delete the root data directories
+		if dir != "." && dir != "/" && dir != rootDirs[i] {
+			if empty, err := isDirEmpty(dir); err == nil && empty {
+				log.Printf("Directory %s is empty, deleting it.", dir)
+				if err := os.Remove(dir); err != nil {
+					log.Printf("Failed to delete empty directory %s: %v", dir, err)
+				}
+			} else if err != nil {
+				log.Printf("Error checking if directory %s is empty: %v", dir, err)
+			}
+		}
+	}
+
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 

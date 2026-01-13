@@ -8,11 +8,59 @@
     <style>
         body { padding: 20px; }
         .container { max-width: 1200px; margin: 0 auto; }
-        table { width: 100%; margin-top: 10px; }
-        th, td { text-align: left; padding: 8px; white-space: nowrap; }
-        summary { font-weight: bold; cursor: pointer; display: flex; align-items: center; } /* 移除 justify-content */
-        details { border: 1px solid #e0e0e0; border-radius: 5px; padding: 10px; margin-bottom: 10px; overflow-x: auto; } /* 添加横向滚动 */
-        details[open] { padding-bottom: 15px; }
+        
+        .folder-card { margin-bottom: 2.5rem; }
+        .folder-card header { display: flex; justify-content: space-between; align-items: center; padding-bottom: 1rem; border-bottom: 1px solid var(--pico-muted-border-color); margin-bottom: 1rem; }
+        .folder-card header span { font-size: 1.1rem; font-weight: bold; }
+        
+        .recording-list { display: flex; flex-direction: column; gap: 0.5rem; }
+        .recording-item { display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 1rem; border-radius: var(--pico-border-radius); background-color: var(--pico-secondary-background); }
+        .recording-item:hover { background-color: var(--pico-secondary-hover-background); }
+        
+        .item-details { display: flex; flex-direction: column; gap: 0.25rem; }
+        .item-details strong { font-weight: 500; }
+        .item-details small { color: var(--pico-muted-color); }
+
+        .item-actions { display: flex; align-items: center; gap: 1rem; }
+        .action-icon {
+            background: none;
+            border: none;
+            padding: 4px;
+            margin: 0;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--pico-h_color);
+            opacity: 0.7;
+            transition: all 0.2s ease;
+        }
+        .action-icon svg { width: 20px; height: 20px; }
+        .action-icon:hover { opacity: 1; }
+        .item-actions a.action-icon:hover { color: var(--pico-primary); }
+        .item-actions form { margin: 0; }
+        .item-actions form button.action-icon:hover { color: var(--pico-invalid); } /* Pico's semantic color for errors/destructive actions */
+
+        .item-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.75rem;
+            margin-top: 0.5rem;
+        }
+        .meta-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            font-size: 0.8em;
+            color: var(--pico-muted-color);
+            padding: 2px 8px;
+            border: 1px solid var(--pico-muted-border-color);
+            border-radius: var(--pico-border-radius);
+        }
+        .meta-tag svg {
+            width: 14px;
+            height: 14px;
+        }
     </style>
 </head>
 <body>
@@ -28,39 +76,56 @@
         </nav>
 
         <h1>录音列表</h1>
-        
+
         {{ range $folder, $files := . }}
-        <details>
-            <summary>
+        <article class="folder-card">
+            <header>
                 <span>📁 {{ if eq $folder "/" }}根目录{{ else }}{{ $folder }}{{ end }} ({{ len $files }} 个文件)</span>
-                <a href="/edit-folder?path={{ $folder }}" role="button" class="secondary outline" style="margin-left: auto;">编辑位置</a>
-            </summary>
-            <table>
-                <thead>
-                    <tr>
-                        <th>标题</th>
-                        <th>文件名</th>
-                        <th>时长</th>
-                        <th>大小</th>
-                        <th>录音位置</th>
-                        <th>录音时间</th>
-                        <th>操作</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {{ range $files }}
-                    <tr>
-                        <td>{{ .Title }}</td>
-                        <td>{{ Base .SourceFilename }}</td>
-                                            <td>{{ formatDuration .DurationSeconds }}</td>
-                                            <td>{{ printf "%.2f MB" .SourceFileSizeMB }}</td>
-                                            <td>{{ .Location }}</td>                        <td>{{ .RecordDate.Format "2006-01-02 15:04" }}</td>
-                        <td><a href="/edit?filename={{ .SourceFilename }}">编辑</a></td>
-                    </tr>
-                    {{ end }}
-                </tbody>
-            </table>
-        </details>
+                <a href="/edit-folder?path={{ $folder }}" role="button" class="secondary outline">编辑位置</a>
+            </header>
+            <div class="recording-list">
+                {{ range $files }}
+                <div class="recording-item">
+                    <div class="item-details">
+                        <strong>{{ .Title }}</strong>
+                        <div class="item-meta">
+                            <span class="meta-tag">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg>
+                                {{ Base .SourceFilename }}
+                            </span>
+                             <span class="meta-tag">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                                {{ formatDuration .DurationSeconds }}
+                            </span>
+                            <span class="meta-tag">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"></ellipse><path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path></svg>
+                                {{ printf "%.2f MB" .SourceFileSizeMB }}
+                            </span>
+                             <span class="meta-tag">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path><circle cx="12" cy="10" r="3"></circle></svg>
+                                {{ .Location }}
+                            </span>
+                            <span class="meta-tag">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                                {{ .RecordDate.Format "2006-01-02 15:04" }}
+                            </span>
+                        </div>
+                    </div>
+                    <div class="item-actions">
+                        <a href="/edit?filename={{ .SourceFilename }}" class="action-icon" title="编辑">
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"></path></svg>
+                        </a>
+                        <form action="/delete" method="post" onsubmit="return confirm('确定要删除这个录音吗？所有相关文件（.wav, .m4a, .json）都将被删除。');">
+                            <input type="hidden" name="filename" value="{{ .SourceFilename }}">
+                            <button type="submit" class="action-icon" title="删除">
+                                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"></path></svg>
+                            </button>
+                        </form>
+                    </div>
+                </div>
+                {{ end }}
+            </div>
+        </article>
         {{ else }}
         <p>暂无录音文件，请将 .wav 文件放入 `data/wav` 目录中。</p>
         {{ end }}
