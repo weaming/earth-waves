@@ -1,0 +1,16 @@
+{
+  "source_filename": "山涧/茶山观.wav",
+  "title": "山涧",
+  "description": "",
+  "location": "茶山观",
+  "record_date": "2026-01-18T22:23:30+08:00",
+  "duration_seconds": 314.666667,
+  "source_file_size_mb": 115.23441696166992,
+  "compressed_file_size_mb": 0,
+  "compressed_audio_path": "assets/audio/山涧/茶山观.m4a",
+  "tech_info": {
+    "sample_rate": 48000,
+    "bit_depth": 32,
+    "channels": 2
+  }
+}
